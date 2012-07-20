@@ -1,0 +1,515 @@
+// BYU Splash Lab Logger, by Stephen Carlson, Janurary 2012
+// Use Notepad++ with Tab=4
+
+// Pins Configuration:
+//    -- Package --
+// PDIP-28		TQFP-32		Pro		Name	Function Used	Assignment			Code Label
+//    14		   12		8		PB0		DIO				SPI CS for ADXL
+//    15		   13		9		PB1		DIO				Blue LED
+//    16		   14		10		PB2		/SS				SPI CS for Flash
+//    17		   15		11		PB3		MOSI			SPI Tx
+//    18		   16		12		PB4		MISO			SPI Rx
+//    19		   17		13		PB5		SCK				SPI, Green LED
+//     9		   --		-		PB6		XTAL1
+//    10		   --		-		PB7		XTAL2
+//    23		   23		A0		PC0		ADC0			
+//    24		   24		A1		PC1		ADC1			
+//    25		   25		A2		PC2		ADC2			
+//    26		   26		A3		PC3		ADC3			
+//    27		   27		A4		PC4		SDA				I2C SDA
+//    28		   28		A5		PC5		SCL				I2C SCL
+//    1			   29		RST		PC6		/Reset			Reset
+//    2			   30		RXI		PD0		RXD				UART Rx
+//    3			   31		TXO		PD1		TXD				UART Tx
+//    4			   32		2		PD2		INT0			ADXL Int 1
+//    5			   1		3		PD3		INT1			ADXL Int 2
+//    6			   2		4		PD4				
+//    11		   9		5		PD5					
+//    12		   10		6		PD6					
+//    13		   11		7		PD7						
+//    --		   19		-		ADC6
+//    --		   22		-		ADC7
+
+//           76543210	7		6		5		4		3		2		1		0
+// DDRB = 0b --SsSSLS	XTAL2	XTAL1	SCK		MISO	MOSI	CS Fl	LED		CS Adxl
+// DDRC = 0b -0CC____	--		Reset	SCL		SDA
+// DDRD = 0b ____ii10									Int1	Int2	TXD		RXD
+
+// Legend: - N/A		_ Avaliable		S/s SPI		C I2C		i Interrupt		1/0 Output/Input
+
+// =======================================================================
+
+// Behavioral Switches
+// #define ADXL345
+// #define ITG3200
+// #define dataFlash
+// #define microSD
+
+// Debug Switches
+//#define DEBUG_MASTER
+#define DEBUG_CPU_TIME
+#define DEBUG_IMU
+//#define DEBUG_ADC
+#define DEBUG_VOLTS
+
+// System Parameters
+#define F_CPU			16000000UL
+//#define BAUD			115200 //19200
+#define MYUBRR			8 //(((((F_CPU * 10) / (16L * BAUD)) + 5) / 10) - 1)
+#define LOOP_PERIOD		2500	// (16000000 Hz / 64) / 100 Hz
+#define BUFFER_SIZE 	512
+//#define TWI_FREQ		400000L
+
+// System Constants
+#define SLEEP 			0
+#define ACTIVE 			1
+#define ARMED 			2
+#define FAULT 			-1
+#define HIGH			1
+#define LOW				0
+#define READ			1 // ADXL SPI Flags
+#define WRITE			0
+#define SINGLE			0
+#define MULTI			1
+
+// Port Definitions and Macros
+typedef struct{
+  unsigned int bit0:1;
+  unsigned int bit1:1;
+  unsigned int bit2:1;
+  unsigned int bit3:1;
+  unsigned int bit4:1;
+  unsigned int bit5:1;
+  unsigned int bit6:1;
+  unsigned int bit7:1;
+} _io_reg; 
+#define REGISTER_BIT(rg,bt) ((volatile _io_reg*)&rg)->bit##bt
+
+#define LED			REGISTER_BIT(PORTB,1)
+#define CS_FLASH	REGISTER_BIT(PORTB,2)
+#define CS_ADXL		REGISTER_BIT(PORTB,0)
+#define ADXLINT1	(PIND &(1<<3))
+#define ADXLINT2	(PIND &(1<<2))
+
+// Included Headers
+#include <stdio.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/sleep.h>
+#include <util/delay.h>
+
+// Function Prototypes
+void setup(void);
+void loop(void);
+void printDebug(void);
+void getAccelFIFO(void);
+void getAccelSample(void);
+uint16_t getBatt(void);
+char deviceIdCheck(void);
+void ADXL345Init(void);
+void ADXL345Mode(int8_t);
+uint16_t readADC(uint8_t);
+uint8_t transferSPI(uint8_t);
+static int putUARTchar(char c, FILE *stream);
+uint8_t getUARTchar(void);
+void flashLED(uint8_t, uint8_t, uint8_t);
+
+// Global Variables
+static FILE mystdout = FDEV_SETUP_STREAM(putUARTchar, NULL, _FDEV_SETUP_WRITE);
+volatile uint8_t dataBuffer[BUFFER_SIZE];
+uint16_t bufferIndex = 0;
+uint16_t timeStamp = 0;
+#ifdef DEBUG_CPU_TIME
+uint16_t timePeriod;
+#endif
+uint8_t timeCounter = 0;
+uint8_t timeSeconds = 0;
+volatile uint8_t adxlInitFlag = 0;
+//int8 sysState = SLEEP;
+
+struct sample_t{
+	uint16_t X;
+	uint16_t Y;
+	uint16_t Z;
+} sample = {0xAAAA,0xBBBB,0xCCCC};
+
+
+
+// Interrupt Vectors
+ISR(INT0_vect){
+	//sleep_disable();
+}
+
+ISR(INT1_vect){
+	//sleep_disable();
+}
+
+// Main Program
+int main(void){
+	setup();
+
+	while(1){
+		if((TCNT1-timeStamp) < LOOP_PERIOD);
+		else{
+			if(timeCounter >= 100){
+				timeCounter=0;
+				timeSeconds++;
+				if((timeSeconds&0x0F) == 0){
+					uint16_t battVolt = getBatt();
+					printf("Batt: %u\n",battVolt);
+					cli();
+					if(battVolt <= 2550){
+						printf("Sleep Mode!\n");
+						set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+						sleep_mode();
+						// sleep_enable();
+						// sleep_bod_disable();
+						// sei();
+						// sleep_cpu();
+						// sleep_disable();
+					}
+					sei();
+				}
+			} else timeCounter++;
+#if defined(DEBUG_MASTER)
+			if(timeCounter%10 == 0) printDebug();
+#endif
+			timeStamp = TCNT1;
+			//loop();
+#ifdef DEBUG_CPU_TIME
+			timePeriod = TCNT1-timeStamp;
+#endif
+		}
+		loop();
+	}
+	return(0);
+}
+
+void setup(void){
+	// System
+	MCUCR |= (1<<PUD);		// Pull-up Disable
+
+	// Timers
+	TCCR1A = 0;
+	TCCR1B = (1<<CS10)|(1<<CS11);
+	
+	// IO Ports
+	// 0: Input (Hi-Z) 1: Output
+	//        76543210		7		6		5		4		3		2		1		0
+	DDRB |= 0b00101111; //	XTAL2	XTAL1	SCK		MISO	MOSI	CS Fl	LED		CS Adxl
+    DDRC |= 0b00000000; //	--		Reset	SCL		SDA
+    DDRD |= 0b00000010; //									Int1	Int2	TXD		RXD
+	PORTB |=0b00100111; // CS_FLASH = 1 and CS_ADXL = 1 possible alternate
+	
+	// Serial Port
+	UBRR0H = MYUBRR >> 8;
+    UBRR0L = MYUBRR;
+    UCSR0B = (1<<RXEN0)|(1<<TXEN0);
+    stdout = &mystdout;
+	
+	//SPI
+	SPCR	= (1<<SPE)|(1<<MSTR)|(1<<CPOL)|(1<<CPHA);
+	
+	// ADC
+	ADMUX 	= (1<<REFS0);	// AVcc Connected
+	ADCSRA 	= (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1);
+	DIDR0 	= (1<<ADC5D)|(1<<ADC4D)|(1<<ADC3D)|(1<<ADC2D)|(1<<ADC1D)|(1<<ADC0D);
+	
+	ADXL345Init();
+	ADXL345Mode(ACTIVE);
+
+	// Tasks and Routines
+	printf("\n\nSplash Logger\n\n");
+	
+	flashLED(20,10,40);
+	
+	printf("Device ID Check: ");
+	if(deviceIdCheck()){
+		printf("OK\n");
+		for(uint16_t i = 0; i<(BUFFER_SIZE-1); i++){
+			dataBuffer[i] = '*'; //0x2A;
+		}
+		dataBuffer[BUFFER_SIZE-1] = '\n'; //0x2A;
+	} else{
+		printf("FAILED!\n");
+		//sysState = FAULT;
+		while(1) flashLED(10,30,30);
+	}
+	
+		// Interrupts
+	//EIMSK  = (1<<INT0)|(1<<INT1);	
+	sei();
+}
+
+void loop(void){
+	static int count = 0;
+	static char state = 0;
+	//if(timeSeconds & 0x01) LED = HIGH;
+	//else LED = LOW;
+	
+	printf("sizeof(sample)= %d\t", sizeof(sample));
+	printf("address: %p\t", &sample);
+	printf("Values: %X, %X, %X\n", sample.X, sample.Y, sample.Z);
+	printf("Elements: \n");
+	for(int i=0; i<6; i+2){
+		printf("%X\n", *(int *)(((int)&sample)+i));
+	}
+	printf("\n");
+	
+	if(ADXLINT2){
+		if(state == 0){
+			printf("[Watermark]\n");
+			state = 1;
+		}
+	} else state = 0;
+	
+	if(ADXLINT1){
+		LED = HIGH;
+		
+		CS_ADXL = LOW;
+			transferSPI((READ<<7) | (SINGLE<<6) | 0x30);
+			int status = transferSPI(0x00);
+		CS_ADXL = HIGH;
+		
+		printf("%u\t",++count);
+		if(status&(1<<6)) printf("[1 Tap]");
+		if(status&(1<<5)) printf("[2 Tap]");
+		if(status&(1<<4)) printf("[Activity]");
+		if(status&(1<<3)) printf("[InActive]");
+		if(status&(1<<2)) printf("[Freefall]");
+		printf("\r\n");
+		
+		_delay_ms(5);
+	}
+	LED = LOW;
+}
+
+void printDebug(void){
+	//printf('\a'); //printf('\f'); //printf("%c", (char) 0x0C);
+#if defined(DEBUG_CPU_TIME)
+	printf("%u\t",timeSeconds);
+	//printf("%u uS\t",timePeriod);
+#endif
+
+#if defined(DEBUG_IMU)
+	getAccelSample();
+	printf("%i,\t%i,\t%i\t",sample.X,sample.Y,sample.Z);
+#endif
+
+#if defined(DEBUG_ADC)
+	uint16_t adcValue;
+	for(uint8_t i=0;i<=15;i++){
+		adcValue = readADC(i);
+		printf("%u\t", adcValue);
+	}
+#endif
+
+#if defined(DEBUG_VOLTS)
+	printf("%u\t", getBatt());
+#endif
+
+	printf("\r\n");
+}
+
+ void getAccelFIFO(void){
+	for(uint8_t j=0; j<32; j++){
+		getAccelSample();
+		for(uint8_t i=0; i<6; i++){ // sizeof(sample); ?
+			if(bufferIndex > 500) break;
+			dataBuffer[bufferIndex++] = 'A'; //
+		}
+	}
+}
+
+void getAccelSample(void){
+	CS_ADXL = LOW;
+		transferSPI((READ<<7) | (MULTI<<6) | 0x32);
+		sample.X = transferSPI(0x00);
+		sample.X += transferSPI(0x00)<<8;
+		sample.Y = transferSPI(0x00);
+		sample.Y += transferSPI(0x00)<<8;
+		sample.Z = transferSPI(0x00);
+		sample.Z += transferSPI(0x00)<<8;
+	CS_ADXL = HIGH;
+}
+
+uint16_t getBatt(void){
+	uint16_t voltSample = readADC(14);
+	//voltSample = 11000/voltSample;
+	voltSample = 5353 - ((voltSample<<2)+(voltSample<<1)+(voltSample>>2));
+	return voltSample;
+}
+
+char deviceIdCheck(void){
+	CS_ADXL = LOW;
+		transferSPI((READ<<7) | (SINGLE<<6) | 0x00);
+		uint8_t accel = transferSPI(0x00);
+	CS_ADXL = HIGH;
+	
+	CS_FLASH = LOW;
+		transferSPI(0x9F);
+		transferSPI(0x00);
+		uint8_t flash = transferSPI(0x00);
+	CS_FLASH = HIGH;
+	
+	if((accel ^ 0b11100101) == 0 && (flash ^ 0x26) == 0) return 1;
+	return 0;
+}
+
+void ADXL345Init(void){
+	char configArray[] = {					// 21 Values
+		0xB0,		// THRESH_TAP	6g		62.5 mg/LSB unsigned 0xFF = +16 g
+		0x00,		// OFSX					15.6 mg/LSB signed 0x7F = +2 g
+		0x00,		// OFSY
+		0x00,		// OFSZ
+		0x30,		// DUR			30ms	625 uS/LSB		Max time/width of tap peak
+		0x50,		// Latent		100ms	1.25 ms/LSB		No other peak until after this
+		0xF0,		// Window		300ms	1.25 ms/LSB 	Period after latent to make a second peak
+		0x08,		// THRESH_ACT	.5g		62.5 mg/LSB unsigned	Exceed value to flag activity
+		0x04,		// THRESH_INACT	.25g	62.5 mg/LSB unsigned	Stay below for TIME_INACT for inactivity
+		0x05,		// TIME_INACT	5sec	1 sec/LSB
+		0b11111111,	// ACT_INACT_CTL 		ACT[dc/AC][X|Y|Z] INACT[dc/AC][X|Y|Z]
+		0x08,		// THRESH_FF	500mg	62.5 mg/LSB unsigned sqrt(x^2+y^2+z^2)
+		0x14,		// TIME_FF		100ms	5 ms/LSB
+		0b00001111,	// TAP_AXES				0[7:4], [Suppress] Enable[X|Y|Z]
+		0x00,		// ACT_TAP_STATUS READ-ONLY [0] Activity[X|Y|Z] [Asleep] Tap[X|Y|Z]
+		0b00001111,	// BW_RATE				0[7:5], [Low Power] RateCode[3:0]
+		0b00100000,	// POWER_CTL			0[7:6], [Link][AutoSleep][Measure][Sleep] WakeRate[1:0]
+		0b00000000,	// INT_ENABLE			[DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
+		0b10000011,	// INT_MAP				[DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
+		0x00,		// INT_SOURCE READ-ONLY
+		0b00001011	// DATA_FORMAT  FULL_RES bit set
+	};
+	
+	CS_ADXL = LOW;
+		transferSPI((WRITE<<7) | (MULTI<<6) | 0x1D);
+		for(int i=0; i < 21; i++){
+			transferSPI(configArray[i]);
+		}
+	CS_ADXL = HIGH;
+	
+	_delay_ms(1);
+	
+	// FIFO
+	CS_ADXL = LOW;
+		transferSPI((WRITE<<7) | (SINGLE<<6) | 0x38); // FIFO_CTL
+		transferSPI(0b11011111); // FIFO Mode 0b11011000 for Watermark = 24
+	CS_ADXL = HIGH;
+	
+	adxlInitFlag = 1;
+}
+
+void ADXL345Mode(int8_t mode){
+	if(!adxlInitFlag) ADXL345Init();
+	
+	if(mode == SLEEP){
+		CS_ADXL = LOW;
+			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
+			transferSPI(0b00001111); // SLEEP bit set, Rate 1 Hz, pg. 16
+			transferSPI(0b00010000); // Activity bit set
+		CS_ADXL = HIGH;
+	}
+	if(mode == ACTIVE){
+		CS_ADXL = LOW;
+			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2C); // BW_RATE
+			transferSPI(0b00001111); // Rate code on Table 6 on pg. 6 0110 for slow
+			transferSPI(0b00101000); // MEASURE bit set, pg. 16
+			transferSPI(0b11111111); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
+		CS_ADXL = HIGH;
+	}
+	if(mode == ARMED){
+		CS_ADXL = LOW;
+			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
+			transferSPI(0x04); // SLEEP bit set, Rate 8 Hz, pg. 16
+			transferSPI(0b00010000); // Activity bit set
+		CS_ADXL = HIGH;
+	}	
+}
+
+void dataFlashMode(int8_t mode){
+	if(mode == SLEEP){
+		CS_FLASH = LOW;
+			transferSPI(0xB9);
+		CS_FLASH = HIGH;
+	} else{
+		CS_FLASH = LOW;
+			transferSPI(0xAB);
+		CS_FLASH = HIGH;
+	}
+}
+
+uint16_t readADC(uint8_t adcChannel){
+	ADMUX 	= (1<<REFS0) | adcChannel;
+	ADCSRA 	|= (1<<ADSC);
+	while (ADCSRA & (1 << ADSC));
+	return (ADCL + ((uint16_t) ADCH << 8));
+}
+
+uint8_t transferSPI(uint8_t data){
+	SPDR = data;
+	while (!(SPSR & _BV(SPIF)));
+	return SPDR;
+}
+
+static int putUARTchar(char c, FILE *stream){
+    if (c == '\n') putUARTchar('\r', stream);
+    loop_until_bit_is_set(UCSR0A, UDRE0);
+    UDR0 = c;
+    return 0;
+}
+
+uint8_t getUARTchar(void){
+    while( !(UCSR0A & (1<<RXC0)) );
+    return(UDR0);
+}
+
+void flashLED(uint8_t count, uint8_t high, uint8_t low){
+	for(;count>0; count--){
+		LED = HIGH;
+		_delay_ms(high);
+		LED = LOW;
+		_delay_ms(low);
+	}
+}
+//	Function						OpCode		Time		Field Description
+//
+//	Read		Page Directly		D2			66 MHz		3 bytes: 12-bits page, 10 or 9-bits byte, 4 padding bytes
+//				Continuous Array	03			33 MHz		3 bytes: 12-bits page, 10-bits byte (for 528 byte version)
+//				Buffer 1			D1			-
+//				Buffer 2			D3			-
+//	Page to		Buffer 1			53			400 us
+//				Buffer 2			55			400 us			
+//	Write to	Buffer 1			84			-
+//				Buffer 2			87			-
+//	Commit		Buffer 1 w/ Erase	83			40 ms
+//				Buffer 2 w/ Erase	86			40 ms
+//				Buffer 1 w/o Erase	88			6 ms
+//				Buffer 2 w/o Erase	89			6 ms
+//	Erase		Page				81			35 ms
+//				Block				50			100 ms
+//				Sector				7C			5 seconds
+//				Chip				7C 94 80 9A	15+ seconds
+//
+//	Power Down						B9			Down to 15 uA
+//	Resume							AB			Resume to normal
+//	Status							D7 			[Ready / !Busy][Compare Result][1011][Protected][Page Size (0)]
+//	Device ID						9F			Yields 0x1F 0x26
+
+
+/*
+Excerpt from http://www.nongnu.org/avr-libc/user-manual/sleep_8h_source.html
+00416     #define SLEEP_MODE_IDLE         (0)
+00417     #define SLEEP_MODE_ADC          _BV(SM0)
+00418     #define SLEEP_MODE_PWR_DOWN     _BV(SM1)
+00419     #define SLEEP_MODE_PWR_SAVE     (_BV(SM0) | _BV(SM1))
+00420     #define SLEEP_MODE_STANDBY      (_BV(SM1) | _BV(SM2))
+00421     #define SLEEP_MODE_EXT_STANDBY  (_BV(SM0) | _BV(SM1) | _BV(SM2))
+*/
+
+
+
+
+
+
+
+
