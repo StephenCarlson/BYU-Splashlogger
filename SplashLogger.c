@@ -329,6 +329,22 @@ void loop(void){
 }
 
 void testSampleSequence(void){
+	CS_ADXL = LOW;
+		transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
+		uint8_t fifoSamples = transferSPI(0x00);
+	CS_ADXL = HIGH;
+	for(;fifoSamples>ADXL_FIFO;fifoSamples--){
+		CS_ADXL = LOW;
+			transferSPI((READ<<7) | (SINGLE<<6) | 0x32);
+			transferSPI(0x00);
+		CS_ADXL = HIGH;
+	}
+	// CS_ADXL = LOW;
+		// transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
+		// transferSPI(0x00);
+	// CS_ADXL = HIGH;
+
+
 	uint16_t page = ((TEST_BLOCKS*testNumber)+TEST_OFFSET)<<3;
 	TCNT1 = 0;
 	
@@ -345,16 +361,16 @@ void testSampleSequence(void){
 		// 3*(ADXL_FIFO(27)*6+6) + 2 = 
 		for(uint8_t j=0; j<3; j++){ // Enable the FIFO and Watermark Interrupt for this
 			while(!ADXLINT2){ // if(!GyroReadFlag){ Reading(); Set GyroReadFlag; }
-				if((TCNT1-gyroTimeStamp)>162 && (gyroCount<2)){ //about 2.6ms
+				if((TCNT1-gyroTimeStamp)>167 && (gyroCount<2)){ //about 2.88ms
 					gyroTimeStamp = TCNT1;
 					gyroCount++;
 					bufferIndex = getGyroSample(bufferIndex);
 				}
 			}
-			// CS_ADXL = LOW;
-				// transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
-				// transferSPI(0x00);
-			// CS_ADXL = HIGH;
+			CS_ADXL = LOW;
+				transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
+				transferSPI(0x00);
+			CS_ADXL = HIGH;
 			bufferIndex = getAccelFIFO(bufferIndex); //6 bytes * ADXL_FIFO
 			//if(bufferIndex > 504){
 			//	printf("OVERFLOW!");
@@ -362,6 +378,11 @@ void testSampleSequence(void){
 			//}
 			
 			while(ADXLINT2); // Clear GyroReadFlag
+			
+			CS_ADXL = LOW;
+				transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
+				transferSPI(0x00);
+			CS_ADXL = HIGH;
 			
 			gyroTimeStamp = TCNT1;
 			gyroCount=0;
@@ -559,8 +580,8 @@ uint16_t getAccelFIFO(uint16_t index){
 				if(index >= BUFFER_SIZE-1) break; // printf("break");
 				dataBufferA[index++] = transferSPI(0x00);
 			}
-			transferSPI(0x00);
-			transferSPI(0x00);
+			//transferSPI(0x00);
+			//transferSPI(0x00);
 		CS_ADXL = HIGH;
 	}
 	return index;
