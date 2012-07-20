@@ -55,7 +55,7 @@
 #define I2C_FREQ		400000L
 #define LOOP_PERIOD		2500	// (16000000 Hz / 64) / 100 Hz
 #define BUFFER_SIZE 	512
-#define ADXL_FIFO		28 // 28, Critical for proper bandwidth
+#define ADXL_FIFO		25 // 28, Critical for proper bandwidth
 #define ADXL_RATE		0b00001111 // 0110 Lowest
 #define TEST_BLOCKS		16 // (84 Sa/page)(8 pages/block)(16 blocks) = 10752 Sa, / 3200 Sa/sec = 3.36 sec, 
 #define TEST_OFFSET		1  // Erase by page: Skip Block 0 as it holds test run number
@@ -73,7 +73,7 @@
 #define WRITE			0 // Also I2C Direction Flags
 #define SINGLE			0
 #define MULTI			1
-#define ITG3200ADDR		0x69
+#define ITG3200ADDR		0x69 // was 0x68 for Kyle's
 #define ACK				1
 #define NACK			0
 
@@ -114,6 +114,7 @@ uint16_t getBatt(void);
 char deviceIdCheck(void);
 
 uint16_t getAccelFIFO(uint16_t);
+uint16_t getGyroSample(uint16_t);
 void ADXL345Init(void);
 void ADXL345Mode(int8_t);
 
@@ -239,7 +240,7 @@ void setup(void){
 	DIDR0 	= (1<<ADC5D)|(1<<ADC4D)|(1<<ADC3D)|(1<<ADC2D)|(1<<ADC1D)|(1<<ADC0D);
 
 	// Tasks and Routines
-	printf("\n\nBYU Splash Logger Rev 1\n\n");
+	printf("\n\nBYU Splash Logger dev July2012\n\n");
 	
 	flashLED(20,10,40);
 	
@@ -331,34 +332,52 @@ void testSampleSequence(void){
 	uint16_t page = ((TEST_BLOCKS*testNumber)+TEST_OFFSET)<<3;
 	TCNT1 = 0;
 	
+	uint16_t gyroTimeStamp = 0;
+	uint8_t gyroCount = 0;
+	
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
 		LED = HIGH;
 #ifndef ITG3200
-		uint16_t time = TCNT1;
+		uint16_t time = TCNT1; // If CS12, 62.5 kHz Timer 
 #endif
 		uint16_t bufferIndex = 0;
 		
 		// 3*(ADXL_FIFO(27)*6+6) + 2 = 
 		for(uint8_t j=0; j<3; j++){ // Enable the FIFO and Watermark Interrupt for this
-			while(!ADXLINT2); // if(!GyroReadFlag){ Reading(); Set GyroReadFlag; }
-			bufferIndex = getAccelFIFO(bufferIndex);
+			while(!ADXLINT2){ // if(!GyroReadFlag){ Reading(); Set GyroReadFlag; }
+				if((TCNT1-gyroTimeStamp)>162 && (gyroCount<2)){ //about 2.6ms
+					gyroTimeStamp = TCNT1;
+					gyroCount++;
+					bufferIndex = getGyroSample(bufferIndex);
+				}
+			}
+			// CS_ADXL = LOW;
+				// transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
+				// transferSPI(0x00);
+			// CS_ADXL = HIGH;
+			bufferIndex = getAccelFIFO(bufferIndex); //6 bytes * ADXL_FIFO
 			//if(bufferIndex > 504){
 			//	printf("OVERFLOW!");
 			//	break;
 			//}
+			
 			while(ADXLINT2); // Clear GyroReadFlag
+			
+			gyroTimeStamp = TCNT1;
+			gyroCount=0;
+			bufferIndex = getGyroSample(bufferIndex);
 		}
 		
 //#if defined(ITG3200) !!! Note: ITG3200 switch forced on here.
-			startI2C(ITG3200ADDR, WRITE);
-				writeI2C(0x1D);
-			stopI2C();
-			startI2C(ITG3200ADDR, READ);
-				for(uint8_t k=0; k<6; k++){
-					uint8_t ackType = (k < (6-1))? ACK : NACK ;
-					dataBufferA[bufferIndex++] = readI2C(ackType);
-				}
-			stopI2C();
+			// startI2C(ITG3200ADDR, WRITE);
+				// writeI2C(0x1D);
+			// stopI2C();
+			// startI2C(ITG3200ADDR, READ);
+				// for(uint8_t k=0; k<6; k++){
+					// uint8_t ackType = (k < (6-1))? ACK : NACK ;
+					// dataBufferA[bufferIndex++] = readI2C(ackType);
+				// }
+			// stopI2C();
 		
 		//}
 //#else
@@ -467,13 +486,13 @@ void dumpSamples(uint8_t test){
 	uint16_t page = ((TEST_BLOCKS*test)+TEST_OFFSET)<<3;
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
 		dataFlashReadPage(page+i,dataBufferA);
-		for(uint8_t j=0; j<(ADXL_FIFO*3); j++){
+		for(uint8_t j=0; j<((ADXL_FIFO+3)*3); j++){
 			for(uint16_t k=0; k<6; k+=2){
 				uint16_t value = dataBufferA[j*6+k]+(dataBufferA[j*6+k+1]<<8);
 				printf("%d\t",value);
 			}
 			
-			if(j == (ADXL_FIFO*3)-1){
+			if(j == ((ADXL_FIFO+3)*3)-1){
 #if defined(ITG3200)
 				for(uint16_t l=504; l<510; l+=2){
 					uint16_t value = (dataBufferA[l]<<8)+dataBufferA[l+1];
@@ -540,8 +559,22 @@ uint16_t getAccelFIFO(uint16_t index){
 				if(index >= BUFFER_SIZE-1) break; // printf("break");
 				dataBufferA[index++] = transferSPI(0x00);
 			}
+			transferSPI(0x00);
+			transferSPI(0x00);
 		CS_ADXL = HIGH;
 	}
+	return index;
+}
+uint16_t getGyroSample(uint16_t index){
+	startI2C(ITG3200ADDR, WRITE);
+		writeI2C(0x1D);
+	stopI2C();
+	startI2C(ITG3200ADDR, READ);
+		for(uint8_t k=0; k<6; k++){
+			uint8_t ackType = (k < (6-1))? ACK : NACK ;
+			dataBufferA[index++] = readI2C(ackType);
+		}
+	stopI2C();
 	return index;
 }
 
@@ -582,7 +615,7 @@ void ADXL345Init(void){
 	// FIFO
 	CS_ADXL = LOW;
 		transferSPI((WRITE<<7) | (SINGLE<<6) | 0x38); // FIFO_CTL
-		transferSPI(0b10000000 | ADXL_FIFO); // Stream Mode
+		transferSPI(0b10000000 | (ADXL_FIFO-2)); // Stream Mode
 	CS_ADXL = HIGH;
 	
 	adxlInitFlag = 1;
@@ -759,7 +792,7 @@ uint16_t readADC(uint8_t adcChannel){
 
 uint8_t transferSPI(uint8_t data){
 	SPDR = data;
-	while (!(SPSR & _BV(SPIF)));
+	while(!(SPSR & _BV(SPIF)));
 	return SPDR;
 }
 
