@@ -278,7 +278,8 @@ AVRDUDE_PROGRAMMER = arduino
 #arduino
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
-AVRDUDE_PORT = COM5
+#AVRDUDE_PORT = COM5	my programmer
+AVRDUDE_PORT = COM6
 
 AVRDUDE_BAUD = 57600
 
