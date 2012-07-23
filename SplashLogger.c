@@ -73,7 +73,7 @@
 #define WRITE			0 // Also I2C Direction Flags
 #define SINGLE			0
 #define MULTI			1
-#define ITG3200ADDR		0x69 // was 0x68 for Kyle's
+#define ITG3200ADDR		0x68 // was 0x68 for Kyle's
 #define ACK				1
 #define NACK			0
 
@@ -568,7 +568,7 @@ char deviceIdCheck(void){
 	printf("Accel: %X\tFlash: %X\tGyro: %X\n", accel,flash,gyro);
 	
 	
-	if((accel ^ 0b11100101) == 0 && (flash ^ 0x26) == 0 && ((gyro & 0b01111111) ^ ITG3200ADDR) == 0) return 1;
+	if((accel ^ 0b11100101) == 0 && (flash ^ 0x26) == 0 && ((gyro & 0b01111111) ^ 0x69) == 0) return 1;
 	return 0;
 }
 
