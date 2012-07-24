@@ -1,0 +1,54 @@
+
+
+
+
+
+3 times
+	getAccelFIFO ADXL_FIFO(25) * 6 bytes
+	getGyroSample 6 bytes
+	time out
+			getGyroSample 6 bytes
+			getGyroSample 6 bytes
+total of 28 * 6 *3 = 504
+
+time 2 bytes
+timeEnd 2 bytes
+
+j	i-->
+|
+|
+v
+
+01 23 45 // i+6*j, i[0:5], j[0:24]
+67 89 1011 
+.......
+144145 146147 148149 // 28*6*j+k*6=row for k[0:24]
+
+150151 152153 154155 // 28*6*j+25*6+k*6 for k[0:2]
+156157 158159 160161
+162163 164165 166167
+
+New Loop
+168169 170171 172173 // 28*6*j+k*6
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
