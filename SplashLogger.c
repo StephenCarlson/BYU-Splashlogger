@@ -351,12 +351,12 @@ void testSampleSequence(void){
 	
 	uint16_t gyroTimeStamp = 0;
 	uint8_t gyroCount = 0;
-	uint8_t gyroIndex = 0;
 	
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
 		LED = HIGH;
 		uint16_t time = TCNT1; // If CS12, 62.5 kHz Timer 
 		uint16_t bufferIndex = 0;
+		uint8_t gyroIndex = (i==0)? 12 : 0;
 		
 		// 3*(ADXL_FIFO(27)*6+6) + 2 = 
 		for(uint8_t j=0; j<3; j++){ // Enable the FIFO and Watermark Interrupt for this
@@ -422,9 +422,8 @@ void dumpSamples(uint8_t test){
 		dataFlashReadPage(page+i,dataBufferA);
 		uint16_t index = 0;
 		for(uint8_t j=0; j<(3); j++){
-			uint8_t k=0;
-			for(; k<ADXL_FIFO; k++){
-				printf("_A%d\t",index);
+			for(uint8_t k=0; k<ADXL_FIFO; k++){
+				printf("_A\t");
 				for(uint8_t l=0; l<6; l+=2){
 					int16_t value = dataBufferA[index+l]|(dataBufferA[index+l+1]<<8);
 					printf("%d\t",value);
@@ -455,8 +454,8 @@ void dumpSamples(uint8_t test){
 		}
 		
 		
-		for(k=0; k<3; k++){
-			printf("_G%d\t",index);
+		for(uint8_t k=0; k<9; k++){
+			printf("_G\t");
 			for(uint8_t l=0; l<6; l+=2){
 				int16_t value = (dataBufferA[index+l]<<8)|dataBufferA[index+l+1];
 				printf("%d\t",value);
@@ -516,7 +515,7 @@ uint16_t getAccelFIFO(uint16_t index){
 		CS_ADXL = LOW;
 			transferSPI((READ<<7) | (MULTI<<6) | 0x32);
 			for(uint8_t i=0; i<6; i++){
-				if(index >= BUFFER_SIZE-1) break; // printf("break");
+				if(index > BUFFER_SIZE-1) break; // printf("break");
 				dataBufferA[index++] = transferSPI(0x00);
 			}
 			//transferSPI(0x00);
@@ -531,6 +530,7 @@ uint16_t getGyroSample(uint16_t index){
 	stopI2C();
 	startI2C(ITG3200ADDR, READ);
 		for(uint8_t k=0; k<6; k++){
+			if(index > 54-1) break;
 			uint8_t ackType = (k < (6-1))? ACK : NACK ;
 			dataBufferG[index++] = readI2C(ackType);
 		}
