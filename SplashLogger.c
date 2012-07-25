@@ -73,7 +73,7 @@
 #define WRITE			0 // Also I2C Direction Flags
 #define SINGLE			0
 #define MULTI			1
-#define ITG3200ADDR		0x68 // was 0x68 for Kyle's
+#define ITG3200ADDR		0x69 // was 0x68 for Kyle's
 #define ACK				1
 #define NACK			0
 
@@ -143,6 +143,7 @@ void flashLED(uint8_t, uint8_t, uint8_t);
 // Global Variables
 static FILE uart_io = FDEV_SETUP_STREAM(putUARTchar, NULL, _FDEV_SETUP_WRITE);
 uint8_t dataBufferA[BUFFER_SIZE]; //volatile
+uint8_t dataBufferG[54];
 volatile uint8_t adxlInitFlag = 0;
 uint8_t testNumber = 0;
 
@@ -350,12 +351,11 @@ void testSampleSequence(void){
 	
 	uint16_t gyroTimeStamp = 0;
 	uint8_t gyroCount = 0;
+	uint8_t gyroIndex = 0;
 	
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
 		LED = HIGH;
-//#ifndef ITG3200
 		uint16_t time = TCNT1; // If CS12, 62.5 kHz Timer 
-//#endif
 		uint16_t bufferIndex = 0;
 		
 		// 3*(ADXL_FIFO(27)*6+6) + 2 = 
@@ -364,7 +364,7 @@ void testSampleSequence(void){
 				if((TCNT1-gyroTimeStamp)>167 && (gyroCount<2)){ //about 2.88ms
 					gyroTimeStamp = TCNT1;
 					gyroCount++;
-					bufferIndex = getGyroSample(bufferIndex);
+					gyroIndex = getGyroSample(gyroIndex);
 				}
 			}
 			CS_ADXL = LOW;
@@ -386,29 +386,21 @@ void testSampleSequence(void){
 			
 			gyroTimeStamp = TCNT1;
 			gyroCount=0;
-			bufferIndex = getGyroSample(bufferIndex);
+			gyroIndex = getGyroSample(gyroIndex);
 		}
 		
-//#if defined(ITG3200) !!! Note: ITG3200 switch forced on here.
-			// startI2C(ITG3200ADDR, WRITE);
-				// writeI2C(0x1D);
-			// stopI2C();
-			// startI2C(ITG3200ADDR, READ);
-				// for(uint8_t k=0; k<6; k++){
-					// uint8_t ackType = (k < (6-1))? ACK : NACK ;
-					// dataBufferA[bufferIndex++] = readI2C(ackType);
-				// }
-			// stopI2C();
+		for(gyroIndex=0; gyroIndex<54; gyroIndex++){
+			dataBufferA[bufferIndex++] = dataBufferG[gyroIndex];
+		}
 		
-		//}
-//#else
-		dataBufferA[bufferIndex++] = time>>8;
-		dataBufferA[bufferIndex++] = time;
-//#endif
+		dataBufferA[504] = time>>8;
+		dataBufferA[505] = time;
 		
 		uint16_t timeEnd = TCNT1;
-		dataBufferA[bufferIndex++] = timeEnd>>8;
-		dataBufferA[bufferIndex] = timeEnd;
+		dataBufferA[506] = timeEnd>>8;
+		dataBufferA[507] = timeEnd;
+		dataBufferA[508] = bufferIndex>>8;
+		dataBufferA[509] = bufferIndex;
 		LED = LOW;
 		dataFlashWritePage(page+i, i&0x01, dataBufferA);
 	}
@@ -422,114 +414,62 @@ void testSampleSequence(void){
 
 
 
-/*
-void dumpSamples(uint8_t test){
-	if(test>TEST_MAX) return;
-	uint16_t page = ((TEST_BLOCKS*test)+TEST_OFFSET)<<3;
-	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
-		dataFlashReadPage(page+i,dataBufferA);
-		//uint16_t index = 0;
-		
-		for(uint8_t j=0; j<3; j++){
-			for(uint8_t k=0; k<(ADXL_FIFO+1); k++){ // 0 to 26, 27 to 53, 54 to 80
-				for(uint8_t l=0; l<6; l+=2){
-					uint16_t value = dataBufferA[(j*ADXL_FIFO+k)*6+l]+(dataBufferA[(j*ADXL_FIFO+k)*6+l+1]<<8);
-					printf("%d\t",value);
-				}
-				
-				if(k==ADXL_FIFO){
-					for(uint8_t l=0; l<6; l+=2){
-						uint16_t value = (dataBufferA[(j*ADXL_FIFO+k)*6+l]<<8)+dataBufferA[(j*ADXL_FIFO+k)*6+l+1];
-						printf("%d\t", value);
-					}
-					if(j == 2){
-						uint16_t time1 = (dataBufferA[504]<<8)+dataBufferA[505];
-						printf("%u",time1);
-					}
-				}
-				
-				
-				printf("\n");
-			}
-		}
-		
-		
-		
-		
-		
-		
-		
-		//////////////////////
-		for(uint8_t j=0; j<3; j++){
-			for(uint8_t k=0; k<ADXL_FIFO; k++){ // 0 to 26, 27 to 53, 54 to 80
-				for(uint8_t l=0; l<6; l+=2){
-					uint16_t value = dataBufferA[(j*ADXL_FIFO+k)*6+l]+(dataBufferA[(j*ADXL_FIFO+k)*6+l+1]<<8);
-					printf("%d\t",value);
-				}
-				
-				// if((k == (ADXL_FIFO*(j+1))-1)){
-					// for(uint8_t l=0; l<6; l+=2){
-						// uint16_t value = (dataBufferA[(j*ADXL_FIFO+k)*6+l]<<8)+dataBufferA[(j*ADXL_FIFO+k)*6+l+1];
-						// printf("%d\t", value);
-					// }
-					// if(j == 2){
-						// uint16_t time1 = (dataBufferA[504]<<8)+dataBufferA[505];
-						// printf("%u",time1);
-					// }
-				// }
-				printf("\n");
-			}
-		
-				
-			
-			// for(uint16_t l=0; l<6; l+=2){
-				// uint16_t value = (dataBufferA[l]<<8)+dataBufferA[l+1];
-				// printf("%d\t", value);
-			// }
-				
-				
-			// if(j == 2){
-				// uint16_t time1 = (dataBufferA[504]<<8)+dataBufferA[505];
-				// printf("%u",time1);
-			// }
-			// printf("\n");
-		}
-		///////////////////////////
-	}
-}
-*/
-
-
-
 
 void dumpSamples(uint8_t test){
 	if(test>TEST_MAX) return;
 	uint16_t page = ((TEST_BLOCKS*test)+TEST_OFFSET)<<3;
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
 		dataFlashReadPage(page+i,dataBufferA);
+		uint16_t index = 0;
 		for(uint8_t j=0; j<(3); j++){
-			uint16_t k=(j*6*28);
-			for(; k<((j+1)*6*ADXL_FIFO); k+=6){
-				int16_t value1 = dataBufferA[k]|(dataBufferA[k+1]<<8);
-				int16_t value2 = dataBufferA[k+2]|(dataBufferA[k+3]<<8);
-				int16_t value3 = dataBufferA[k+4]|(dataBufferA[k+5]<<8);
-				printf("_A\t%d\t%d\t%d\n",value1,value2,value3);
+			uint8_t k=0;
+			for(; k<ADXL_FIFO; k++){
+				printf("_A%d\t",index);
+				for(uint8_t l=0; l<6; l+=2){
+					int16_t value = dataBufferA[index+l]|(dataBufferA[index+l+1]<<8);
+					printf("%d\t",value);
+				}
+				index+=6;
+				printf("\n");
 			}
 			
-			for(k=((j+1)*6*ADXL_FIFO); k<((j+1)*6*28); k+=6){
-				int16_t value1 = (dataBufferA[k]<<8)|dataBufferA[k+1];
-				int16_t value2 = (dataBufferA[k+2]<<8)|dataBufferA[k+3];
-				int16_t value3 = (dataBufferA[k+4]<<8)|dataBufferA[k+5];
-				printf("_G\t%d\t%d\t%d\n",value1,value2,value3);
-			}
-		//}
+			
+			
+			
+			
+			
+			// uint16_t k=(j*6*28);
+			// for(; k<(j*6*28+6*ADXL_FIFO); k+=6){
+				// int16_t value1 = dataBufferA[k]|(dataBufferA[k+1]<<8);
+				// int16_t value2 = dataBufferA[k+2]|(dataBufferA[k+3]<<8);
+				// int16_t value3 = dataBufferA[k+4]|(dataBufferA[k+5]<<8);
+				// printf("_A%u\t%d\t%d\t%d\n",k,value1,value2,value3);
+			// }
+			
+			// for(k=(j*6*28+6*ADXL_FIFO); k<((j+1)*6*28); k+=6){
+				// int16_t value1 = (dataBufferA[k]<<8)|dataBufferA[k+1];
+				// int16_t value2 = (dataBufferA[k+2]<<8)|dataBufferA[k+3];
+				// int16_t value3 = (dataBufferA[k+4]<<8)|dataBufferA[k+5];
+				// printf("_G%u\t%d\t%d\t%d\n",k,value1,value2,value3);
+			// }
+		}
 		
+		
+		for(k=0; k<3; k++){
+			printf("_G%d\t",index);
+			for(uint8_t l=0; l<6; l+=2){
+				int16_t value = (dataBufferA[index+l]<<8)|dataBufferA[index+l+1];
+				printf("%d\t",value);
+			}
+			index+=6;
+			printf("\n");
+		}
 		
 		uint16_t time1 = (dataBufferA[504]<<8)+dataBufferA[505];
 		uint16_t time2 = (dataBufferA[506]<<8)+dataBufferA[507];
 		printf("_T\t%u\t%u\n", time1, time2);
 		//printf("\n");
-		}
+		//}
 	}
 }
 
@@ -592,7 +532,7 @@ uint16_t getGyroSample(uint16_t index){
 	startI2C(ITG3200ADDR, READ);
 		for(uint8_t k=0; k<6; k++){
 			uint8_t ackType = (k < (6-1))? ACK : NACK ;
-			dataBufferA[index++] = readI2C(ackType);
+			dataBufferG[index++] = readI2C(ackType);
 		}
 	stopI2C();
 	return index;
