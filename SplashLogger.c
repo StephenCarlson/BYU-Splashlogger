@@ -183,6 +183,8 @@ ISR(USART_RX_vect){
 		case '?':
 			printf("\nConsole Useage:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery mV\nN\tCurrent Test#\nT\tForce Trigger\n?\tConsole Useage\n\n");
 			printf("Impending Test# (Stored in Flash): %u\n\n", (dataFlashReadByte(0,0) +1));
+			printf("Important Info: _T units are 62.5 kHz clock ticks, roll over on 2^16\n"
+				"Test Duration: 3.00 Sec; 9600 Sa from ADXL345 @ 3200 Sa/sec +/-0.5%%\n\n");
 			break;
 			
 			// +/-		Inc/Dec Test #
