@@ -73,7 +73,7 @@
 #define WRITE			0 // Also I2C Direction Flags
 #define SINGLE			0
 #define MULTI			1
-#define ITG3200ADDR		0x69 // was 0x68 for Kyle's
+#define ITG3200ADDR		0x68 // was 0x68 for Kyle's
 #define ACK				1
 #define NACK			0
 
@@ -181,7 +181,7 @@ ISR(USART_RX_vect){
 			printf("Test#: %u\n", (testNumber+1));
 			break;
 		case '?':
-			printf("\nConsole Hints:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery\nN\tTest#\nT\tForce Trigger\n?\tConsole Hints\n\n");
+			printf("\nConsole Useage:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery mV\nN\tCurrent Test#\nT\tForce Trigger\n?\tConsole Useage\n\n");
 			printf("Impending Test# (Stored in Flash): %u\n\n", (dataFlashReadByte(0,0) +1));
 			break;
 			
@@ -281,7 +281,7 @@ void setup(void){
 	dataFlashCleanTestBlocks(testNumber);
 	
 	// Console Usage Hints
-	printf("\nConsole Hints:\n+/-\tInc/Dec#\nD\tDump\nR\tTest#=0\nB\tBattery\nN\tTest#\nT\tForce Triggure\n?\tConsole Hints\n\n");
+	printf("\nConsole Useage:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery mV\nN\tCurrent Test#\nT\tForce Trigger\n?\tConsole Useage\n\n");
 	
 	sei();
 }
