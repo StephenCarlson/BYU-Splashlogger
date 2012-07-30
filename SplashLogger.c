@@ -341,6 +341,7 @@ void testSampleSequence(void){
 			transferSPI((READ<<7) | (SINGLE<<6) | 0x32);
 			transferSPI(0x00);
 		CS_ADXL = HIGH;
+		getBatt(); // Pre-heat the ADC for correct battery measurement in test cycle.
 	}
 	// CS_ADXL = LOW;
 		// transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
@@ -403,6 +404,11 @@ void testSampleSequence(void){
 		dataBufferA[507] = timeEnd;
 		dataBufferA[508] = bufferIndex>>8;
 		dataBufferA[509] = bufferIndex;
+		if(i==(8*TEST_BLOCKS-1)){
+			uint16_t battVolt = getBatt();
+			dataBufferA[510] = battVolt>>8;
+			dataBufferA[511] = battVolt;
+		}
 		LED = LOW;
 		dataFlashWritePage(page+i, i&0x01, dataBufferA);
 	}
@@ -469,8 +475,10 @@ void dumpSamples(uint8_t test){
 		uint16_t time1 = (dataBufferA[504]<<8)+dataBufferA[505];
 		uint16_t time2 = (dataBufferA[506]<<8)+dataBufferA[507];
 		printf("_T\t%u\t%u\n", time1, time2);
-		//printf("\n");
-		//}
+		if(i==(8*TEST_BLOCKS-1)){
+			uint16_t battVolt = (dataBufferA[510]<<8)+dataBufferA[511];
+			printf("_B\t%u\n",battVolt);
+		}
 	}
 }
 
