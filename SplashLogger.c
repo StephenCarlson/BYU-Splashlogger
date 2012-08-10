@@ -301,6 +301,8 @@ void loop(void){
 			status = transferSPI(0x00);
 		CS_ADXL = HIGH;
 		
+		LED = LOW;
+		
 		/*
 		printf("%u\t",++count);
 		if(status&(1<<6)){
@@ -370,6 +372,8 @@ void testSampleSequence(void){
 					gyroIndex = getGyroSample(gyroIndex);
 				}
 			}
+			LED = LOW;
+			
 			CS_ADXL = LOW;
 				transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
 				transferSPI(0x00);
