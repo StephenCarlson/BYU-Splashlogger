@@ -73,9 +73,10 @@
 #define WRITE			0 // Also I2C Direction Flags
 #define SINGLE			0
 #define MULTI			1
-#define ITG3200ADDR		0x68 // was 0x68 for Kyle's
+#define ITG3200ADDR		0x69 // was 0x68 for Kyle's
 #define ACK				1
 #define NACK			0
+#define EEPROM_START	10
 
 // Port Definitions and Macros
 typedef struct{
@@ -103,6 +104,7 @@ typedef struct{
 #include <avr/sleep.h>
 #include <util/delay.h>
 #include <util/twi.h>
+#include <avr/eeprom.h>
 
 // Function Prototypes
 void setup(void);
@@ -112,6 +114,8 @@ void testSampleSequence(void);
 void dumpSamples(uint8_t);
 uint16_t getBatt(void);
 char deviceIdCheck(void);
+void printHelpInfo(void);
+void printTriggerSources(void);
 
 uint16_t getAccelFIFO(uint16_t);
 uint16_t getGyroSample(uint16_t);
@@ -146,6 +150,12 @@ uint8_t dataBufferA[BUFFER_SIZE]; //volatile
 uint8_t dataBufferG[54];
 volatile uint8_t adxlInitFlag = 0;
 uint8_t testNumber = 0;
+static struct{
+	uint8_t onOneTap:1;
+	uint8_t onTwoTap:1;
+	//uint8_t onActivity:1;
+	uint8_t onFreeFall:1;
+} configFlags;
 
 
 // Interrupt Vectors
@@ -181,10 +191,36 @@ ISR(USART_RX_vect){
 			printf("Test#: %u\n", (testNumber+1));
 			break;
 		case '?':
-			printf("\nConsole Useage:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery mV\nN\tCurrent Test#\nT\tForce Trigger\n?\tConsole Useage\n\n");
-			printf("Impending Test# (Stored in Flash): %u\n\n", (dataFlashReadByte(0,0) +1));
-			printf("Important Info: _T units are 62.5 kHz clock ticks, roll over on 2^16\n"
-				"Test Duration: 3.00 Sec; 9600 Sa from ADXL345 @ 3200 Sa/sec +/-0.5%%\n\n");
+			printHelpInfo();
+			printTriggerSources();
+			break;
+		case '1':
+			configFlags.onOneTap ^= 1;
+			printf("Trigger on 1 Tap: ");
+			if(configFlags.onOneTap) printf("Enabled\n");
+			else printf("Disabled\n");
+			break;
+		case '2':
+			configFlags.onTwoTap ^= 1;
+			printf("Trigger on 2 Taps: ");
+			if(configFlags.onTwoTap) printf("Enabled\n");
+			else printf("Disabled\n");
+			break;
+		// case '3':
+			// configFlags.onActivity ^= 1;
+			// printf("Trigger on Activity: ");
+			// if(configFlags.onActivity) printf("Enabled\n");
+			// else printf("Disabled\n");
+			// break;
+		case '3':
+			configFlags.onFreeFall ^= 1;
+			printf("Trigger on Freefall: ");
+			if(configFlags.onFreeFall) printf("Enabled\n");
+			else printf("Disabled\n");
+			break;
+		case '0':
+			eeprom_update_byte((uint8_t*)EEPROM_START,(*(uint8_t*) &configFlags)); //*((uint8_t*) &configFlags)
+			printTriggerSources();
 			break;
 			
 			// +/-		Inc/Dec Test #
@@ -281,9 +317,13 @@ void setup(void){
 	
 	// Critical for Flash to write samples correctly and as fast as possible
 	dataFlashCleanTestBlocks(testNumber);
+		
+	*((uint8_t*) &configFlags) = eeprom_read_byte((const uint8_t*) EEPROM_START);
 	
 	// Console Usage Hints
-	printf("\nConsole Useage:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery mV\nN\tCurrent Test#\nT\tForce Trigger\n?\tConsole Useage\n\n");
+	//printf("\nConsole Useage:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery mV\nN\tCurrent Test#\nT\tForce Trigger\n?\tConsole Useage\n\n");
+	printHelpInfo();
+	printTriggerSources();
 	
 	sei();
 }
@@ -303,32 +343,35 @@ void loop(void){
 		
 		LED = LOW;
 		
-		/*
-		printf("%u\t",++count);
-		if(status&(1<<6)){
-			printf("[1 Tap]");			
-			//if(state == 0) testSampleSequence();
-			//state = 1;
+		
+		//printf("%u\t",++count);
+		if((status&(1<<6)) && (configFlags.onOneTap)){
+			//printf("[1 Tap]");
+			// if(state == 0) testSampleSequence();
+			// state = 1;
+			testSampleSequence();
 		}
-		if(status&(1<<5)){
-			printf("[2 Tap]");
-			//if(state == 0) testSampleSequence();
-			//state = 1;
+		if((status&(1<<5)) && (configFlags.onTwoTap)){
+			//printf("[2 Tap]");
+			// if(state == 0) testSampleSequence();
+			// state = 1;
+			testSampleSequence();
 		}
-		if(status&(1<<4)) printf("[Activity]");
-		*/
+		//if((status&(1<<4))) //printf("[Activity]"); // && (configFlags.onActivity)) 
+		
 		if(status&(1<<3)){
 			//printf("[Inactive]");
 			state = 0;
 		}
-		if(status&(1<<2)){
+		if((status&(1<<2)) && (configFlags.onFreeFall)){
 			//printf("[Freefall]");
-			if(state == 0) testSampleSequence();
-			state = 1;
+			// if(state == 0) testSampleSequence();
+			// state = 1;
+			testSampleSequence();
 		}
 		//printf("\n");
 		
-		_delay_ms(5);
+		_delay_ms(50);
 	}
 	LED = LOW;
 }
@@ -524,6 +567,31 @@ char deviceIdCheck(void){
 	return 0;
 }
 
+void printHelpInfo(void){
+	printf("\nConsole Useage:\n"
+		"+/-\tInc/Dec#\n"
+		"D\tDump\n"
+		"R\tReset Test#=1\n"
+		"B\tBattery mV\n"
+		"N\tCurrent Test#\n"
+		"T\tForce Trigger\n"
+		"1 to 3\tToggle Trigger Sources\n"
+		"0\tWrite Toggles to EEPROM and Review\n"
+		"?\tConsole Useage\n\n");
+	printf("Impending Test# (Stored in Flash): %u\n\n", (dataFlashReadByte(0,0) +1));
+	printf("Important Info: _T units are 62.5 kHz clock ticks, roll over on 2^16\n"
+		"Test Duration: 3.00 Sec; 9600 Sa from ADXL345 @ 3200 Sa/sec +/-0.5%%\n\n");
+
+}
+
+void printTriggerSources(void){
+	printf("\nTest Triggers: \n");
+	printf("OneTap: %u\n",configFlags.onOneTap);
+	printf("TwoTap: %u\n",configFlags.onTwoTap);
+	//printf("Activity: %u\n",configFlags.onActivity);
+	printf("Freefall: %u\n\n",configFlags.onFreeFall);
+}
+
 uint16_t getAccelFIFO(uint16_t index){	
 	for(uint8_t j=0; j<ADXL_FIFO; j++){
 		CS_ADXL = LOW;
@@ -617,7 +685,7 @@ void ADXL345Mode(int8_t mode){
 			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // BW_RATE was 0x2C
 			//transferSPI(0b00001111); // Rate code on Table 6 on pg. 6 0110 for slow
 			transferSPI(0b00101000); // MEASURE bit set, pg. 16
-			transferSPI(0b00011110); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
+			transferSPI(0b01101110); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 			//transferSPI(0b01111110); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 		CS_ADXL = HIGH;
 	}
