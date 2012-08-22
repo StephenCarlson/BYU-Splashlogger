@@ -41,6 +41,7 @@
 
 // Behavioral Switches
 #define ITG3200
+//#define TRIGGER_SELECT
 
 // Debug Switches
 //#define DEBUG_MASTER // Wiped out with my 6 April Trimming
@@ -73,7 +74,7 @@
 #define WRITE			0 // Also I2C Direction Flags
 #define SINGLE			0
 #define MULTI			1
-#define ITG3200ADDR		0x69 // was 0x68 for Kyle's
+#define ITG3200ADDR		0x68 // was 0x68 for Kyle's
 #define ACK				1
 #define NACK			0
 #define EEPROM_START	10
@@ -194,6 +195,7 @@ ISR(USART_RX_vect){
 			printHelpInfo();
 			printTriggerSources();
 			break;
+#if defined(TRIGGER_SELECT)
 		case '1':
 			configFlags.onOneTap ^= 1;
 			printf("Trigger on 1 Tap: ");
@@ -222,6 +224,7 @@ ISR(USART_RX_vect){
 			eeprom_update_byte((uint8_t*)EEPROM_START,(*(uint8_t*) &configFlags)); //*((uint8_t*) &configFlags)
 			printTriggerSources();
 			break;
+#endif
 			
 			// +/-		Inc/Dec Test #
 			// N		Display Test Number
@@ -343,7 +346,7 @@ void loop(void){
 		
 		LED = LOW;
 		
-		
+#if defined(TRIGGER_SELECT)
 		//printf("%u\t",++count);
 		if((status&(1<<6)) && (configFlags.onOneTap)){
 			//printf("[1 Tap]");
@@ -370,7 +373,17 @@ void loop(void){
 			testSampleSequence();
 		}
 		//printf("\n");
+#else
+		if(status&(1<<2)){
+			testSampleSequence();
+		}
+#endif
 		
+		_delay_ms(50);
+		CS_ADXL = LOW;
+			transferSPI((READ<<7) | (SINGLE<<6) | 0x30);
+			status = transferSPI(0x00);
+		CS_ADXL = HIGH;
 		_delay_ms(50);
 	}
 	LED = LOW;
@@ -461,7 +474,7 @@ void testSampleSequence(void){
 	}
 	while(dataFlashStatus());
 	
-	testNumber = (testNumber >= TEST_MAX)? 0 : testNumber + 1;
+	testNumber = (testNumber >= TEST_MAX)? testNumber : testNumber + 1;
 	dataFlashCleanTestBlocks(testNumber);
 	dataFlashWritePointer(testNumber);
 	while(dataFlashStatus());
@@ -586,10 +599,12 @@ void printHelpInfo(void){
 
 void printTriggerSources(void){
 	printf("\nTest Triggers: \n");
+#if defined(TRIGGER_SELECT)
 	printf("OneTap: %u\n",configFlags.onOneTap);
 	printf("TwoTap: %u\n",configFlags.onTwoTap);
 	//printf("Activity: %u\n",configFlags.onActivity);
 	printf("Freefall: %u\n\n",configFlags.onFreeFall);
+#endif
 }
 
 uint16_t getAccelFIFO(uint16_t index){	

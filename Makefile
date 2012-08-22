@@ -70,8 +70,8 @@ FORMAT = ihex
 
 
 # Target file name (without extension).
-TARGET = SplashLogger
-
+#TARGET = SplashLogger
+TARGET = microLogger
 
 # Object files directory
 #     To put object files in current directory, use a dot (.), do NOT make
@@ -274,12 +274,13 @@ LDFLAGS += $(PRINTF_LIB) $(SCANF_LIB) $(MATH_LIB)
 # to get a full listing.
 #
 AVRDUDE_PROGRAMMER = arduino
+#AVRDUDE_PROGRAMMER = stk500v2
 #stk500v1
 #arduino
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
 #AVRDUDE_PORT = COM5	my programmer
-AVRDUDE_PORT = COM6
+AVRDUDE_PORT = COM10
 
 AVRDUDE_BAUD = 57600
 
@@ -301,6 +302,7 @@ AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex:i
 # to submit bug reports.
 AVRDUDE_VERBOSE = -v -v
 
+#AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -p $(MCU) 
 AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -b $(AVRDUDE_BAUD) -p $(MCU) 
 AVRDUDE_FLAGS += $(AVRDUDE_NO_VERIFY)
 AVRDUDE_FLAGS += $(AVRDUDE_VERBOSE)
