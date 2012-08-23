@@ -1,0 +1,32 @@
+Power Management Notes for microLogger
+
+
+For set_sleep_mode(SLEEP_MODE_PWR_DOWN) only:	275 uA
+With both ADXL345 and dataFlash to sleep:		275 uA
+With TWCR,SPCR,ADMUX and ADXSRA = 0:			105 uA
+With power_all_disable() envoked:				105 uA
+MPU_VLOGIC = LOW; before or after above			135 uA
+Removing //MPU_VLOGIC = LOW;					75	uA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,77 @@
+microLogger Initial Prototype Synopsis
+
+Soldering and Fabrication
+	No issues thus far.
+	Unique to 9150 board: Cut SPI lines to 9150
+	
+
+
+Schematic and Design Issues
+	Programming in SPI requires pull-up resistors on /CS lines, keep devices High-Z
+	RTS from Bluetooth is not really RTS from computer, is actually RN-42's own way to complain about too fast data
+	Next version needs to remove battery positive pad from under RN-42
+	Also, create ground pads under RN-42 shield solder artifacts, had to use electrical tape to prevent contact with traces.
+	Will have to maintain the current pogobed profile. Next version will probably have minimal component movement, just traces reworked.
+	Major design annoyment: MPU-9150 Register Map is still not published
+	
+	
+	
+Custom Bootloader
+	Since RTS is inaccessable on DUN-DCE Bluetooth profile, had to make custom loader
+	UART Baudrate equation in original code is trash, had to copy the eq that I use
+	Added a 0x14 0x10 empty response if Watchdog was source of reset.
+	In application code, if '0' and ' ' pattern occures, sets Watchdog to reset in 16ms.
+	Note: Fuses are set for startup time of 65 ms, total about 81ms from '0 ' to 0x14 0x10 response. 84.7 ms in actuality.
+	May have issues with noise on UART line during processor reboot, none seen in Saleae sniff
+	Set fuses with BOOTRST enabled (that is, 0 - programmed) and BOOTSZ1 programmed (0). 0x3E00 is Bootloader start
+	Don't get where the compiler directive LDSECTION  = --section-start=.text=0x7800 gets to 0x3E00, should I know this? 0x3C00 when >>1
+		Oh, I get it now, the table shows the BOOTSZ bits as there are programmed, so BOOTSZ = 01, 0x3C00: Just need to get why >>1.
+	"The semaphore timeout period has expired." is annoying, Bluetooth is somewhat hard to control firmly.
+	May need to occationally reboot RN-42, or try to detect connectivity issues.
+	
+	
+	
+	
+Quick Overview of work accomplished in chrono order:
+	Got microLogger fabricated
+	Made Pogobed for programming
+	Verification: Mapped Address and Registers of MPU-9150, got all devices initialized.
+	Sleep Mode: Measured power, solved Brownout detect issue, got m328p on breadboard down to .5 uA
+	Have learned how to install a Bluetooth doggle on laptop, (let it choose COM#, rename later)
+	Got Bluetooth bootloader coded based on Arduino stk500 loader, requires application to catch "0 "
+	Also requires the "arduino" option in avrdude, as stk500 immediately assumes the programmer is active and sends commands.
+
+What to do next options:
+	Get power reduced with completed microLogger
+	Characterize low-voltage behavior (UVLO to protect battery)
+	Characterize under-rating of m328p, using 16MHz on 3.3v is a known rule I'm breaking, but has always seemed to work.
+	Start coding the application code with the magnetometer present (MPU-9150), rework for MPU-6000
+	Rework the serial comm protocol
+	Start writing paper for original logger
+	Spend a week redoing documentation, other stuff
+	Get solid model exported to Kyle and Dr. Truscott
+	Get GUI completed
+	Get serial download script completed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
