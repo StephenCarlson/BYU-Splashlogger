@@ -348,10 +348,10 @@ int main(void)
 	UCSRB = _BV(TXEN)|_BV(RXEN);
 #endif
 	
-	if(ch & _BV(WDRF)){
+	//if(ch & _BV(WDRF)){
 		putch(0x14);
 		putch(0x10);
-	}
+	//}
 	
 	/* set LED pin as output */
 	LED_DDR |= _BV(LED);

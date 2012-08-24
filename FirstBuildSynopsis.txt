@@ -28,7 +28,7 @@ Custom Bootloader
 		Oh, I get it now, the table shows the BOOTSZ bits as there are programmed, so BOOTSZ = 01, 0x3C00: Just need to get why >>1.
 	"The semaphore timeout period has expired." is annoying, Bluetooth is somewhat hard to control firmly.
 	May need to occationally reboot RN-42, or try to detect connectivity issues.
-	
+	Another good thing to note: If the processor crashes, or sleeps for ever, pretty hard to upload code.
 	
 	
 	

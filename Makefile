@@ -282,7 +282,8 @@ AVRDUDE_PROGRAMMER = arduino
 #AVRDUDE_PORT = COM5	my programmer
 AVRDUDE_PORT = COM14
 
-AVRDUDE_BAUD = 57600
+#AVRDUDE_BAUD = -b 57600
+#AVRDUDE_BAUD = 115200
 
 AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex:i
 #AVRDUDE_WRITE_EEPROM = -U eeprom:w:$(TARGET).eep
@@ -300,10 +301,10 @@ AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex:i
 # Increase verbosity level.  Please use this when submitting bug
 # reports about avrdude. See <http://savannah.nongnu.org/projects/avrdude> 
 # to submit bug reports.
-AVRDUDE_VERBOSE = -v -v
+#AVRDUDE_VERBOSE = -v -v
 
-#AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -p $(MCU) 
-AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -b $(AVRDUDE_BAUD) -p $(MCU) 
+AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -p $(MCU) 
+#AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) $(AVRDUDE_BAUD) -p $(MCU) 
 AVRDUDE_FLAGS += $(AVRDUDE_NO_VERIFY)
 AVRDUDE_FLAGS += $(AVRDUDE_VERBOSE)
 AVRDUDE_FLAGS += $(AVRDUDE_ERASE_COUNTER)
