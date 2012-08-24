@@ -158,20 +158,32 @@ static struct{
 	uint8_t onFreeFall:1;
 } configFlags;
 static uint8_t bootloaderFlag = 0;
+static volatile uint8_t sleepFlag = 0;
+static volatile uint8_t ledBlink = 0;
 
 
 // Interrupt Vectors
 ISR(WDT_vect){
-	flashLED(2,10,40);
+	//sleepFlag = 0;
+	ledBlink = 1; //flashLED(2,10,40);
+	//printf("WDT\n");
 }
 
 // ISR(USART_RX_vect){
 	// printf("%u",UDR0);
 // }
 
+ISR(PCINT2_vect){ // Does not work if it is the only interrupt. Timing issue.
+	sleepFlag = 0;
+	ledBlink = 0;
+	//printf("PCINT\n");
+	//flashLED(4,80,120);
+}
+
 ISR(USART_RX_vect){
 	uint8_t command = UDR0;
 	
+	sleepFlag = 0;
 	if(command == ' ' && bootloaderFlag==1){
 		WDTCSR |= _BV(WDCE) | _BV(WDE);
 		WDTCSR = _BV(WDE);
@@ -210,9 +222,9 @@ ISR(USART_RX_vect){
 		case 'N':
 			printf("Test#: %u\n", (testNumber+1));
 			break;
-		case '?':
-			printHelpInfo();
-			printTriggerSources();
+		
+		case 'Z':
+			sleepFlag = 1;
 			break;
 /*
 #if defined(TRIGGER_SELECT)
@@ -256,6 +268,7 @@ int main(void){
 	while(1){		
 		loop();
 		wdt_reset();
+		//flashLED(10,40,40);
 	}
 	return(0);
 }
@@ -389,11 +402,14 @@ void loop(void){
 	LED = LOW;
 	*/
 	
-	//systemSleep(7);
-	count++;
-	//printf("%u\n",count);
+	if(sleepFlag==1){
+		count++;
+		printf("%u,%u,%u\n",count,WDTCSR, MCUSR);
+		_delay_ms(1);
+		systemSleep(6);
+	}
 	
-	
+	if(ledBlink) flashLED(2,40,20);
 }
 
 void testSampleSequence(void){
@@ -480,6 +496,8 @@ void systemSleep(uint8_t interval){
 	//ADXL345Mode(SLEEP);
 	//dataFlashMode(SLEEP);
 	
+	cli();
+	
 	TWCR = 0;
 	TWSR = 0;
 	SPCR = 0;
@@ -496,26 +514,30 @@ void systemSleep(uint8_t interval){
 	power_all_disable();
 	
 	wdt_reset();
+	// uint8_t value = ((interval&0x08)<<WDP3)|((interval&0x04)<<WDP2)|
+		// ((interval&0x02)<<WDP1)|((interval&0x01)<<WDP0);
+	uint8_t value = ( (uint8_t)(_BV(WDIE)|(interval & 0x08? (1<<WDP3): 0x00)|(interval & 0x07)) );
 	MCUSR = 0;
-	WDTCSR |= (1<<WDCE)|(1<<WDE); //(1<<WDE)|
-	WDTCSR = (1<<WDIE)|((interval&0x08)<<WDP3)|((interval&0x04)<<WDP2)|
-		((interval&0x02)<<WDP1)|((interval&0x01)<<WDP0); // Pretty sure this is just rebooting the device forever?
+	WDTCSR |= (1<<WDCE)|(1<<WDE); //
+	//WDTCSR = (1<<WDIE);
+	WDTCSR = value;
+	//WDTCSR = 0;
 	//wdt_enable(9);
 	
-	cli();
-	PCICR = (1<<PCIE2);
 	PCMSK2 = (1<<PCINT16);
+	PCICR = (1<<PCIE2);
+	
+	
 	
 	set_sleep_mode(SLEEP_MODE_PWR_DOWN); //  SLEEP_MODE_IDLE
 	sleep_enable();
 	sleep_bod_disable();
 	sei();
 	sleep_cpu();
-	sleep_disable();
 	
+	sleep_disable();
 	wdt_reset();
 	atMegaInit();
-
 }
 
 void atMegaInit(void){
@@ -525,6 +547,8 @@ void atMegaInit(void){
 	//uint8_t startupStatus = MCUSR;
 	WDTCSR |= _BV(WDCE) | _BV(WDE);
 	WDTCSR = _BV(WDE) | _BV(WDP3) | _BV(WDP0);
+	
+	PRR = 0;
 
 	// Timers
 	TCCR1A = 0;
@@ -557,8 +581,6 @@ void atMegaInit(void){
 	ADCSRA 	= (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1);
 	DIDR0 	= (1<<ADC5D)|(1<<ADC4D)|(1<<ADC3D)|(1<<ADC2D)|(1<<ADC1D)|(1<<ADC0D);
 
-	PRR = 0;
-	
 	PCICR = 0; //(1<<PCIE2);
 	PCMSK2 = 0; //(1<<PCINT16);
 	
