@@ -1,6 +1,11 @@
 #ifndef I2C_H
 #define I2C_H
 
+//#devine DEBUG_I2C
+
+#define ACK				1
+#define NACK			0
+
 uint8_t startI2C(uint8_t, uint8_t);
 void stopI2C(void);
 uint8_t writeI2C(uint8_t);

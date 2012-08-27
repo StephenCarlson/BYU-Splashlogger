@@ -72,6 +72,7 @@ atmega328: MCU_TARGET = atmega328p
 atmega328: CFLAGS += '-DMAX_TIME_COUNT=F_CPU>>2' '-DNUM_LED_FLASHES=1' '-DWATCHDOG_MODS' -DBAUD_RATE=115200
 atmega328: AVR_FREQ = 16000000L 
 atmega328: LDSECTION  = --section-start=.text=0x7800
+atmega328: atmega328.lss
 atmega328: atmega328.hex
 
 atmega328_isp: atmega328
@@ -113,6 +114,9 @@ clean:
 
 %.lst: %.elf
 	$(OBJDUMP) -h -S $< > $@
+	
+%.lss: %.elf
+	$(OBJDUMP) -h -S -z $< > $@
 
 %.hex: %.elf
 	$(OBJCOPY) -j .text -j .data -O ihex $< $@

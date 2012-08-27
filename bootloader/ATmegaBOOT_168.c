@@ -270,6 +270,13 @@ uint8_t error_count = 0;
 
 void (*app_start)(void) = 0x0000;
 
+// uint8_t wdt_init(void) __attribute__((naked)) __attribute__((section(".init3")));
+// uint8_t wdt_init(void){
+    // uint8_t startupStatus = MCUSR;
+	// MCUSR = 0;
+    // wdt_disable();
+    // return startupStatus;
+// }
 
 /* main program starts here */
 int main(void)
@@ -283,6 +290,7 @@ int main(void)
 
 	WDTCSR |= _BV(WDCE) | _BV(WDE);
 	WDTCSR = 0;
+	MCUSR = ch; // Does not work
 	
 	wdt_reset();
 	//wdt_enable(8);

@@ -43,12 +43,10 @@
 //#define ITG3200
 //#define MPU9150
 //#define TRIGGER_SELECT
+//#define RN42_BLUETOOTH
 
 // Debug Switches
 //#define DEBUG_MASTER // Wiped out with my 6 April Trimming
-//#define DEBUG_ADC
-#define DEBUG_VOLTS
-//#devine DEBUG_I2C
 
 // System Parameters
 #define F_CPU			16000000UL
@@ -75,9 +73,6 @@
 #define WRITE			0 // Also I2C Direction Flags
 #define SINGLE			0
 #define MULTI			1
-#define ITG3200ADDR		0x69 // was 0x68 for Kyle's
-#define ACK				1
-#define NACK			0
 #define EEPROM_START	10
 
 // Port Definitions and Macros
@@ -133,7 +128,8 @@ void setup(void);
 void loop(void);
 void testSampleSequence(void);
 void systemSleep(uint8_t);
-void atMegaInit(void);
+uint8_t atMegaInit(void);
+void bluetoothConfig(void);
 
 void dumpSamples(uint8_t);
 uint16_t getBatt(void);
@@ -150,16 +146,20 @@ void flashLED(uint8_t, uint8_t, uint8_t);
 static FILE uart_io = FDEV_SETUP_STREAM(putUARTchar, NULL, _FDEV_SETUP_WRITE);
 static uint8_t dataBufferA[BUFFER_SIZE]; //volatile
 static uint8_t dataBufferG[54];
-static uint8_t testNumber = 0;
+static uint8_t testNumber; // = 0; //http://www.nongnu.org/avr-libc/user-manual/FAQ.html#faq_varinit
 static struct{
+	uint8_t sleepInt:3;
+	uint8_t wdtSlpEn:1;
 	uint8_t onOneTap:1;
 	uint8_t onTwoTap:1;
 	//uint8_t onActivity:1;
 	uint8_t onFreeFall:1;
 } configFlags;
-static uint8_t bootloaderFlag = 0;
-static volatile uint8_t sleepFlag = 0;
-static volatile uint8_t ledBlink = 0;
+static uint8_t bootloaderFlag; // = 0;
+static volatile uint8_t sleepFlag; // = 0;
+static volatile uint8_t ledBlink; // = 0;
+
+
 
 
 // Interrupt Vectors
@@ -169,19 +169,28 @@ ISR(WDT_vect){
 	//printf("WDT\n");
 }
 
-// ISR(USART_RX_vect){
-	// printf("%u",UDR0);
-// }
-
-ISR(PCINT2_vect){ // Does not work if it is the only interrupt. Timing issue.
+ISR(PCINT2_vect){ // Does not wake uC if it is the only interrupt. Timing issue.
 	sleepFlag = 0;
 	ledBlink = 0;
 	//printf("PCINT\n");
 	//flashLED(4,80,120);
 }
 
+ISR(INT0_vect){
+	
+}
+
+ISR(INT1_vect){
+	
+}
+
+// ISR(USART_RX_vect){
+	// printf("%u",UDR0);
+// }
 ISR(USART_RX_vect){
 	uint8_t command = UDR0;
+	
+	LED = HIGH;
 	
 	sleepFlag = 0;
 	if(command == ' ' && bootloaderFlag==1){
@@ -226,6 +235,10 @@ ISR(USART_RX_vect){
 		case 'Z':
 			sleepFlag = 1;
 			break;
+		case '?':
+			printHelpInfo();
+			printTriggerSources();
+			break;
 /*
 #if defined(TRIGGER_SELECT)
 		case '1':
@@ -259,6 +272,7 @@ ISR(USART_RX_vect){
 #endif
 */
 	}	
+	LED = LOW;
 }
 
 // Main Program
@@ -274,10 +288,13 @@ int main(void){
 }
 
 void setup(void){
-	atMegaInit();
+	uint8_t startStatus = atMegaInit();
+	
+	bluetoothConfig();
 	
 	// Tasks and Routines
 	printf("\n\nBYU Splash Logger dev Aug2012\n\n");
+	printf("Reset Status: %X\n", startStatus);
 	
 	flashLED(20,10,40);
 	MPU_VLOGIC = HIGH;
@@ -320,6 +337,8 @@ void setup(void){
 	// Console Usage Hints
 	printHelpInfo();
 	printTriggerSources();
+	
+	
 }
 
 void loop(void){
@@ -432,6 +451,7 @@ void testSampleSequence(void){
 	uint8_t gyroCount = 0;
 	
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
+		//wdt_reset();
 		LED = HIGH;
 		uint16_t time = TCNT1; // If CS12, 62.5 kHz Timer 
 		uint16_t bufferIndex = 0;
@@ -493,8 +513,8 @@ void systemSleep(uint8_t interval){
 	//	Interval	0	1	2	3	4	5	6	7	8	9
 	//	Time in ms	16	32	64	128	256	512	1k	2k	4k	8k
 	
-	//ADXL345Mode(SLEEP);
-	//dataFlashMode(SLEEP);
+	ADXL345Mode(SLEEP);
+	dataFlashMode(SLEEP);
 	
 	cli();
 	
@@ -526,7 +546,9 @@ void systemSleep(uint8_t interval){
 	
 	PCMSK2 = (1<<PCINT16);
 	PCICR = (1<<PCIE2);
-	
+
+	//EICRA = 0;
+	//EIMSK = (1<<INT1)|(1<<INT0);
 	
 	
 	set_sleep_mode(SLEEP_MODE_PWR_DOWN); //  SLEEP_MODE_IDLE
@@ -538,16 +560,19 @@ void systemSleep(uint8_t interval){
 	sleep_disable();
 	wdt_reset();
 	atMegaInit();
+	bluetoothConfig();
 }
 
-void atMegaInit(void){
+uint8_t atMegaInit(void){
+	uint8_t startupStatus = MCUSR; //wdt_init(); //
+	MCUSR = 0;
+	WDTCSR |= _BV(WDCE) | _BV(WDE);
+	//WDTCSR = 0; //_BV(WDP3) | _BV(WDP0);
+	WDTCSR = _BV(WDE) | _BV(WDP3) | _BV(WDP0);
+	wdt_reset();
+	
 	// System
 	MCUCR |= (1<<PUD);		// Pull-up Disable
-	MCUSR = 0;
-	//uint8_t startupStatus = MCUSR;
-	WDTCSR |= _BV(WDCE) | _BV(WDE);
-	WDTCSR = _BV(WDE) | _BV(WDP3) | _BV(WDP0);
-	
 	PRR = 0;
 
 	// Timers
@@ -584,13 +609,31 @@ void atMegaInit(void){
 	PCICR = 0; //(1<<PCIE2);
 	PCMSK2 = 0; //(1<<PCINT16);
 	
+	EICRA = 0;
+	EIMSK = 0; //(1<<INT1)|(1<<INT0);
+	
 	sei();
+	return startupStatus;
+}
+
+void bluetoothConfig(void){
+	#if defined(RN42_BLUETOOTH)
+	printf("$$$");
+	_delay_ms(5);
+	printf("+\n");
+	_delay_ms(5);
+	printf("ST,255\n");
+	_delay_ms(5);
+	printf("F,1\n");
+	_delay_ms(5);
+	#endif
 }
 
 void dumpSamples(uint8_t test){
 	if(test>TEST_MAX) return;
 	uint16_t page = ((TEST_BLOCKS*test)+TEST_OFFSET)<<3;
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
+		//wdt_reset();
 		dataFlashReadPage(page+i,dataBufferA);
 		uint16_t index = 0;
 		for(uint8_t j=0; j<(3); j++){
@@ -678,6 +721,7 @@ char deviceIdCheck(void){
 	// stopI2C();
 	
 	//printf("Accel: %X\tFlash: %X\tGyro: %X\n", accel,flash,gyro);
+	printf("Accel: %X\tFlash: %X\n", accel,flash);
 	
 	
 	if((accel ^ 0b11100101) == 0 && (flash ^ 0x26) == 0 ) return 1; //&& ((gyro & 0b01111110) ^ 0x68) == 0
@@ -738,4 +782,6 @@ void flashLED(uint8_t count, uint8_t high, uint8_t low){
 		_delay_ms(low);
 	}
 }
+
+
 

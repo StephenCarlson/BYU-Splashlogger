@@ -40,7 +40,9 @@ Quick Overview of work accomplished in chrono order:
 	Have learned how to install a Bluetooth doggle on laptop, (let it choose COM#, rename later)
 	Got Bluetooth bootloader coded based on Arduino stk500 loader, requires application to catch "0 "
 	Also requires the "arduino" option in avrdude, as stk500 immediately assumes the programmer is active and sends commands.
-
+	Brain numbing session hunting down why sleep wouldn't work. Checked .lss asm file, timing issue.
+	
+	
 What to do next options:
 	Get power reduced with completed microLogger
 	Characterize low-voltage behavior (UVLO to protect battery)

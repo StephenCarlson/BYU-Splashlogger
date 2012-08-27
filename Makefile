@@ -273,14 +273,14 @@ LDFLAGS += $(PRINTF_LIB) $(SCANF_LIB) $(MATH_LIB)
 # Type: avrdude -c ?
 # to get a full listing.
 #
-AVRDUDE_PROGRAMMER = arduino
-#AVRDUDE_PROGRAMMER = stk500v2
+#AVRDUDE_PROGRAMMER = arduino
+AVRDUDE_PROGRAMMER = stk500
 #stk500v1
 #arduino
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
 #AVRDUDE_PORT = COM5	my programmer
-AVRDUDE_PORT = COM14
+AVRDUDE_PORT = COM6
 
 #AVRDUDE_BAUD = -b 57600
 #AVRDUDE_BAUD = 115200
