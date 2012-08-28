@@ -127,7 +127,7 @@ typedef struct{
 void setup(void);
 void loop(void);
 void testSampleSequence(void);
-void systemSleep(uint8_t);
+uint8_t systemSleep(uint8_t);
 uint8_t atMegaInit(void);
 void bluetoothConfig(void);
 
@@ -158,13 +158,13 @@ static struct{
 static uint8_t bootloaderFlag; // = 0;
 static volatile uint8_t sleepFlag; // = 0;
 static volatile uint8_t ledBlink; // = 0;
+static volatile uint8_t pinStatesD;
 
 
 
 
 // Interrupt Vectors
 ISR(WDT_vect){
-	//sleepFlag = 0;
 	ledBlink = 1; //flashLED(2,10,40);
 	//printf("WDT\n");
 }
@@ -174,6 +174,15 @@ ISR(PCINT2_vect){ // Does not wake uC if it is the only interrupt. Timing issue.
 	ledBlink = 0;
 	//printf("PCINT\n");
 	//flashLED(4,80,120);
+	// pinStatesD ^= PIND;
+	// if(pinStates & _BV()){
+		
+	// }
+	//if(MPUINT)
+	if(ADXLINT1) ;
+	
+	PCICR = 0; //(1<<PCIE2);
+	PCMSK2 = 0; //(1<<PCINT16);
 }
 
 ISR(INT0_vect){
@@ -421,14 +430,32 @@ void loop(void){
 	LED = LOW;
 	*/
 	
-	if(sleepFlag==1){
+	//uint8_t changed = pinStatesD ^ PIND;
+	//printf("%X\n",changed);
+	pinStatesD ^= PIND;
+	//if(pinStatesD) printf("%X,%X\n", PIND,pinStatesD);
+	//pinStatesD = PIND;
+	//_delay_ms(100);
+	if(ADXLINT1){//pinStatesD & (1<<3))){ //sleepFlag==1 && 
+		CS_ADXL = LOW;
+			transferSPI((READ<<7) | (SINGLE<<6) | 0x30);
+			status = transferSPI(0x00);
+		CS_ADXL = HIGH;
+		printf("Status: %X\n", status);
+	} else{
 		count++;
-		printf("%u,%u,%u\n",count,WDTCSR, MCUSR);
-		_delay_ms(1);
-		systemSleep(6);
+		flashLED(1,20,2);
+		systemSleep(7);
+		//printf("%u\n", ADXLINT1);
+		//_delay_ms(1);
 	}
 	
-	if(ledBlink) flashLED(2,40,20);
+	if(ledBlink){
+		//printf("LED Active\n");
+		flashLED(2,40,20);
+	}
+	
+	//pinStatesD = PIND;
 }
 
 void testSampleSequence(void){
@@ -509,7 +536,7 @@ void testSampleSequence(void){
 	while(dataFlashStatus());
 }
 
-void systemSleep(uint8_t interval){
+uint8_t systemSleep(uint8_t interval){
 	//	Interval	0	1	2	3	4	5	6	7	8	9
 	//	Time in ms	16	32	64	128	256	512	1k	2k	4k	8k
 	
@@ -544,8 +571,9 @@ void systemSleep(uint8_t interval){
 	//WDTCSR = 0;
 	//wdt_enable(9);
 	
-	PCMSK2 = (1<<PCINT16);
-	PCICR = (1<<PCIE2);
+	pinStatesD = PIND;
+	//PCMSK2 = (1<<PCINT16);
+	//PCICR = (1<<PCIE2);
 
 	//EICRA = 0;
 	//EIMSK = (1<<INT1)|(1<<INT0);
@@ -559,8 +587,9 @@ void systemSleep(uint8_t interval){
 	
 	sleep_disable();
 	wdt_reset();
-	atMegaInit();
+	uint8_t systemReturnState = atMegaInit();
 	bluetoothConfig();
+	return systemReturnState;
 }
 
 uint8_t atMegaInit(void){
@@ -606,8 +635,8 @@ uint8_t atMegaInit(void){
 	ADCSRA 	= (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1);
 	DIDR0 	= (1<<ADC5D)|(1<<ADC4D)|(1<<ADC3D)|(1<<ADC2D)|(1<<ADC1D)|(1<<ADC0D);
 
-	PCICR = 0; //(1<<PCIE2);
-	PCMSK2 = 0; //(1<<PCINT16);
+	//PCICR = 0; //(1<<PCIE2);
+	//PCMSK2 = 0; //(1<<PCINT16);
 	
 	EICRA = 0;
 	EIMSK = 0; //(1<<INT1)|(1<<INT0);

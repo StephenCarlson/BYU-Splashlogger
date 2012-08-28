@@ -286,11 +286,12 @@ int main(void)
 
 #ifdef WATCHDOG_MODS
 	ch = MCUSR;
-	MCUSR = 0;
+	//MCUSR = 0;
 
 	WDTCSR |= _BV(WDCE) | _BV(WDE);
-	WDTCSR = 0;
-	MCUSR = ch; // Does not work
+	//WDTCSR = 0;
+	WDTCSR = _BV(WDE) | _BV(WDP3) | _BV(WDP0);
+	//MCUSR = ch; // Does not work
 	
 	wdt_reset();
 	//wdt_enable(8);
@@ -375,6 +376,8 @@ int main(void)
 	/* forever loop */
 	for (;;) {
 
+	wdt_reset();
+	
 	/* get character from UART */
 	ch = getch();
 

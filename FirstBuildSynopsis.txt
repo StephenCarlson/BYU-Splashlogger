@@ -29,8 +29,8 @@ Custom Bootloader
 	"The semaphore timeout period has expired." is annoying, Bluetooth is somewhat hard to control firmly.
 	May need to occationally reboot RN-42, or try to detect connectivity issues.
 	Another good thing to note: If the processor crashes, or sleeps for ever, pretty hard to upload code.
-	
-	
+	Trying to get the system status register data to the application is pretty hard. MCUSR = 0 happens early, app can't get from BL.
+		That is, unless I have the BL avoid clearing the MCUSR, just set dealy for 8 seconds.
 	
 Quick Overview of work accomplished in chrono order:
 	Got microLogger fabricated

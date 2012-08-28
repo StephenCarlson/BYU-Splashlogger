@@ -71,7 +71,7 @@ void ADXL345Mode(int8_t mode){
 	if(mode == SLEEP){
 		CS_ADXL = LOW;
 			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
-			transferSPI(0b00000111); // Measure off, temp
+			transferSPI(0b00001111); // Measure off, temp
 			transferSPI(0b00010000);
 		CS_ADXL = HIGH;
 	}
