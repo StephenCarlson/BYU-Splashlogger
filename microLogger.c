@@ -41,12 +41,13 @@
 
 // Behavioral Switches
 //#define ITG3200
+#define MPU6000
 //#define MPU9150
 //#define TRIGGER_SELECT
 //#define RN42_BLUETOOTH
 
 // Debug Switches
-//#define DEBUG_MASTER // Wiped out with my 6 April Trimming
+
 
 // System Parameters
 #define F_CPU			16000000UL
@@ -88,7 +89,11 @@ typedef struct{
 } _io_reg; 
 #define REGISTER_BIT(rg,bt) ((volatile _io_reg*)&rg)->bit##bt
 
-#define MPU_VLOGIC	REGISTER_BIT(PORTB,0)
+#if defined(MPU9150)
+	#define MPU_VLOGIC	REGISTER_BIT(PORTB,0)
+#elif defined(MPU6000)
+	#define CS_MPU	REGISTER_BIT(PORTB,0)
+#endif
 #define CS_ADXL		REGISTER_BIT(PORTB,1)
 #define CS_FLASH	REGISTER_BIT(PORTB,2)
 #define LED			REGISTER_BIT(PORTD,5)
@@ -112,10 +117,12 @@ typedef struct{
 #include "adxl345.c"
 #include "dataflash.c"
 
-#if defined(MPU9150)
-	#include "mpu9150.c"
-#elif defined(ITG3200)
+#if defined(ITG3200)
 	#include "itg3200.c"
+#elif defined(MPU6000)
+	#include "mpu6000.c"
+#elif defined(MPU9150)
+	#include "mpu9150.c"
 #else
 	uint16_t getGyroSample(uint16_t, uint8_t *);
 	uint16_t getGyroSample(uint16_t index, uint8_t *array){
@@ -128,6 +135,7 @@ void setup(void);
 void loop(void);
 void testSampleSequence(void);
 uint8_t systemSleep(uint8_t);
+uint8_t systemPowerDown(uint8_t);
 uint8_t atMegaInit(void);
 void bluetoothConfig(void);
 
@@ -148,14 +156,14 @@ static uint8_t dataBufferA[BUFFER_SIZE]; //volatile
 static uint8_t dataBufferG[54];
 static uint8_t testNumber; // = 0; //http://www.nongnu.org/avr-libc/user-manual/FAQ.html#faq_varinit
 static struct{
+	uint8_t overWriteEn:1;
 	uint8_t sleepInt:3;
 	uint8_t wdtSlpEn:1;
 	uint8_t onOneTap:1;
 	uint8_t onTwoTap:1;
-	//uint8_t onActivity:1;
 	uint8_t onFreeFall:1;
 } configFlags;
-static uint8_t bootloaderFlag; // = 0;
+static volatile uint8_t bootloaderFlag; // = 0;
 static volatile uint8_t sleepFlag; // = 0;
 static volatile uint8_t ledBlink; // = 0;
 static volatile uint8_t pinStatesD;
@@ -165,7 +173,7 @@ static volatile uint8_t pinStatesD;
 
 // Interrupt Vectors
 ISR(WDT_vect){
-	ledBlink = 1; //flashLED(2,10,40);
+	//ledBlink = 1; //flashLED(2,10,40);
 	//printf("WDT\n");
 }
 
@@ -193,13 +201,10 @@ ISR(INT1_vect){
 	
 }
 
-// ISR(USART_RX_vect){
-	// printf("%u",UDR0);
-// }
 ISR(USART_RX_vect){
 	uint8_t command = UDR0;
 	
-	LED = HIGH;
+	//LED = HIGH;
 	
 	sleepFlag = 0;
 	if(command == ' ' && bootloaderFlag==1){
@@ -281,7 +286,7 @@ ISR(USART_RX_vect){
 #endif
 */
 	}	
-	LED = LOW;
+	//LED = LOW;
 }
 
 // Main Program
@@ -291,7 +296,6 @@ int main(void){
 	while(1){		
 		loop();
 		wdt_reset();
-		//flashLED(10,40,40);
 	}
 	return(0);
 }
@@ -305,8 +309,14 @@ void setup(void){
 	printf("\n\nBYU Splash Logger dev Aug2012\n\n");
 	printf("Reset Status: %X\n", startStatus);
 	
-	flashLED(20,10,40);
-	MPU_VLOGIC = HIGH;
+	flashLED(10,10,40);
+	
+	#if defined(MPU9150)
+		MPU_VLOGIC = HIGH;
+	#elif defined(MPU6000)
+		CS_MPU = HIGH;
+	#endif
+	
 
 	printf("Device ID Check: ");
 	if(deviceIdCheck()){
@@ -315,7 +325,11 @@ void setup(void){
 		ADXL345Init();
 		ADXL345Mode(ACTIVE);
 
-		#if defined(MPU9150)
+		#if defined(ITG3200)
+			ITG3200Mode(ACTIVE);
+		#elif defined(MPU6000)
+			MPU6000Mode(ACTIVE);
+		#elif defined(MPU9150)
 			MPU9150Mode(ACTIVE);
 		#endif
 		
@@ -325,15 +339,23 @@ void setup(void){
 		dataBufferA[BUFFER_SIZE-1] = '\n'; //0x2A;
 	} else{
 		printf("FAILED!\n");
-		flashLED(10,30,30);
+		//flashLED(10,30,30);
 		//return;
 	}	
+	
+	*((uint8_t*) &configFlags) = eeprom_read_byte((const uint8_t*) EEPROM_START);
 	
 	testNumber = dataFlashReadByte(0,0);
 	printf("Impending Test #: %u\n", (testNumber+1));
 	if(testNumber >= TEST_MAX){		
-		printf("Flash Memory Full, Resetting Test # to 1\n");
-		testNumber = 0;
+		printf("Flash Memory Full\n");
+		if(overWriteEn){
+			testNumber = 0;
+			printf("Resetting Test # to 1\n");
+		} else{
+			testNumber = TEST_MAX-1;
+			printf("Overwriting Previous Test\n");
+		}
 		dataFlashWritePointer(testNumber);
 		while(dataFlashStatus());
 	}
@@ -341,13 +363,9 @@ void setup(void){
 	// Critical for Flash to write samples correctly and as fast as possible
 	dataFlashCleanTestBlocks(testNumber);
 	
-	*((uint8_t*) &configFlags) = eeprom_read_byte((const uint8_t*) EEPROM_START);
-	
 	// Console Usage Hints
 	printHelpInfo();
 	printTriggerSources();
-	
-	
 }
 
 void loop(void){
@@ -355,27 +373,8 @@ void loop(void){
 	static char state = 0;
 	uint8_t status;
 	
-	// Test for how SPI bus effects AD0 line on MPU-9150
-	// transferSPI('W');
-	// DDRB |= (1<<4);
-	// PORTB ^= (1<<4);
-	// // PINB = (1<<4);
 	
-	// I2C Register Sniffer
-	// for(uint8_t i=0; i<255; i++){
-		// // transferSPI(i);
-		// //uint8_t test = startI2C(i, READ);
-		// uint8_t test = startI2C(0x69, WRITE);
-			// writeI2C(i);
-		// stopI2C();
-		// startI2C(0x69, READ);
-			// uint8_t value = readI2C(NACK);
-		// stopI2C();
-		// if(test != 0x38){
-			// transferSPI(i);
-			// transferSPI(value);
-		// }
-	// }
+
 	/*
 	if(ADXLINT1){
 		LED = HIGH;
@@ -444,15 +443,15 @@ void loop(void){
 		printf("Status: %X\n", status);
 	} else{
 		count++;
-		flashLED(1,20,2);
-		systemSleep(7);
+		//flashLED(1,20,2);
+		//systemSleep(7);
 		//printf("%u\n", ADXLINT1);
 		//_delay_ms(1);
 	}
 	
 	if(ledBlink){
 		//printf("LED Active\n");
-		flashLED(2,40,20);
+		flashLED(1,40,20);
 	}
 	
 	//pinStatesD = PIND;
@@ -496,10 +495,10 @@ void testSampleSequence(void){
 			LED = LOW;
 			
 			bufferIndex = getAccelFIFO(bufferIndex, dataBufferA); //6 bytes * ADXL_FIFO
-			//if(bufferIndex > 504){
-			//	printf("OVERFLOW!");
-			//	break;
-			//}
+			// if(bufferIndex > 504){
+				// printf("OVERFLOW!");
+				// break;
+			// }
 			
 			while(ADXLINT2); // Clear GyroReadFlag
 			
@@ -592,6 +591,62 @@ uint8_t systemSleep(uint8_t interval){
 	return systemReturnState;
 }
 
+uint8_t systemPowerDown(uint8_t interval){
+	//	Interval	0	1	2	3	4	5	6	7	8	9
+	//	Time in ms	16	32	64	128	256	512	1k	2k	4k	8k
+	
+	ADXL345Mode(SLEEP);
+	dataFlashMode(SLEEP);
+	
+	cli();
+	
+	TWCR = 0;
+	TWSR = 0;
+	SPCR = 0;
+	ADMUX = 0;
+	ADCSRA = 0;
+	DIDR0 = (1<<ADC5D)|(1<<ADC4D)|(1<<ADC3D)|(1<<ADC2D)|(1<<ADC1D)|(1<<ADC0D);
+	DIDR1 = (1<<AIN1D)|(1<<AIN0D);
+	UCSR0B =0;
+	TCCR1B = 0;
+	PORTB = PORTC = PORTD = 0;
+	DDRB = DDRC = DDRD = 0;
+	
+	//MPU_VLOGIC = LOW;
+	power_all_disable();
+	
+	wdt_reset();
+	// uint8_t value = ((interval&0x08)<<WDP3)|((interval&0x04)<<WDP2)|
+		// ((interval&0x02)<<WDP1)|((interval&0x01)<<WDP0);
+	uint8_t value = ( (uint8_t)(_BV(WDIE)|(interval & 0x08? (1<<WDP3): 0x00)|(interval & 0x07)) );
+	MCUSR = 0;
+	WDTCSR |= (1<<WDCE)|(1<<WDE); //
+	//WDTCSR = (1<<WDIE);
+	WDTCSR = value;
+	//WDTCSR = 0;
+	//wdt_enable(9);
+	
+	pinStatesD = PIND;
+	//PCMSK2 = (1<<PCINT16);
+	//PCICR = (1<<PCIE2);
+
+	//EICRA = 0;
+	//EIMSK = (1<<INT1)|(1<<INT0);
+	
+	
+	set_sleep_mode(SLEEP_MODE_PWR_DOWN); //  SLEEP_MODE_IDLE
+	sleep_enable();
+	sleep_bod_disable();
+	sei();
+	sleep_cpu();
+	
+	sleep_disable();
+	wdt_reset();
+	uint8_t systemReturnState = atMegaInit();
+	bluetoothConfig();
+	return systemReturnState;
+}
+
 uint8_t atMegaInit(void){
 	uint8_t startupStatus = MCUSR; //wdt_init(); //
 	MCUSR = 0;
@@ -623,7 +678,7 @@ uint8_t atMegaInit(void){
     stdout = &uart_io; //= stdin 
 	
 	//SPI
-	SPCR	= (1<<SPE)|(1<<MSTR)|(1<<CPOL)|(1<<CPHA);
+	SPCR	= (1<<SPE)|(1<<MSTR)|(1<<CPOL)|(1<<CPHA)|(1<<SPR0); // 1MHz for MPU-6000
 	
 	//I2C
 	TWCR = (1<<TWEN) | (1<<TWEA);
@@ -642,6 +697,7 @@ uint8_t atMegaInit(void){
 	EIMSK = 0; //(1<<INT1)|(1<<INT0);
 	
 	sei();
+	
 	return startupStatus;
 }
 
@@ -730,6 +786,7 @@ char deviceIdCheck(void){
 		transferSPI((READ<<7) | (SINGLE<<6) | 0x00);
 		uint8_t accel = transferSPI(0x00);
 	CS_ADXL = HIGH;
+	accel ^= 0b11100101;
 	
 	CS_FLASH = LOW;
 		transferSPI(0xAB);
@@ -740,20 +797,39 @@ char deviceIdCheck(void){
 		transferSPI(0x00);
 		uint8_t flash = transferSPI(0x00);
 	CS_FLASH = HIGH;
+	flash ^= 0x26;
 	
-	//ITG3200Mode(ACTIVE); // 3 April 2012: Had to place this here to fix 0x4E Init Problem
-	// startI2C(ITG3200ADDR,WRITE);
-		// writeI2C(0x75); // Hope the 9150 matches the 6050/6000
-	// stopI2C();
-	// startI2C(ITG3200ADDR,READ);
-		// uint8_t gyro = readI2C(NACK);
-	// stopI2C();
+	#if defined(ITG3200)
+		ITG3200Mode(ACTIVE); // 3 April 2012: Had to place this here to fix 0x4E Init Problem
+		startI2C(ITG3200ADDR,WRITE);
+			writeI2C(0x00);
+		stopI2C();
+		startI2C(ITG3200ADDR,READ);
+			uint8_t gyro = readI2C(NACK);
+		stopI2C();
+		gyro = (gyro & 0b01111110) ^ 0x68;
+	#elif defined(MPU6000)
+		CS_MPU = LOW;
+			transferSPI((READ<<7)|0x75); // Hope the 9150 matches the 6050/6000
+			uint8_t gyro = transferSPI(0x00);
+		CS_MPU = HIGH;
+		gyro = (gyro & 0b01111110) ^ 0x68;
+	#elif defined(ITG3200)
+		MPU9150Mode(ACTIVE); // 3 April 2012: Had to place this here to fix 0x4E Init Problem
+		startI2C(MPU9150ADDR,WRITE);
+			writeI2C(0x75);
+		stopI2C();
+		startI2C(MPU9150ADDR,READ);
+			uint8_t gyro = readI2C(NACK);
+		stopI2C();
+		gyro = (gyro & 0b01111110) ^ 0x68;
+	#else
+		uint8_t gyro = 0;
+	#endif
 	
-	//printf("Accel: %X\tFlash: %X\tGyro: %X\n", accel,flash,gyro);
-	printf("Accel: %X\tFlash: %X\n", accel,flash);
+	printf("Flash: %X\tAccel: %X\tGyro: %X\n", flash,accel,gyro);
 	
-	
-	if((accel ^ 0b11100101) == 0 && (flash ^ 0x26) == 0 ) return 1; //&& ((gyro & 0b01111110) ^ 0x68) == 0
+	if(flash == 0 && accel == 0 && gyro == 0) return 1;
 	return 0;
 }
 
@@ -771,7 +847,7 @@ void printHelpInfo(void){
 	printf("Impending Test# (Stored in Flash): %u\n\n", (dataFlashReadByte(0,0) +1));
 	printf("Important Info: _T units are 62.5 kHz clock ticks, roll over on 2^16\n"
 		"Test Duration: 3.00 Sec; 9600 Sa from ADXL345 @ 3200 Sa/sec +/-0.5%%\n\n");
-
+		
 }
 
 void printTriggerSources(void){
@@ -814,3 +890,37 @@ void flashLED(uint8_t count, uint8_t high, uint8_t low){
 
 
 
+
+
+
+	// // Test for MPU working
+	// CS_MPU = LOW;
+		// transferSPI((READ<<7)|0x75); // Hope the 9150 matches the 6050/6000
+		// uint8_t gyro = transferSPI(0x00);
+	// CS_MPU = HIGH;
+	// transferSPI(gyro);
+	// ledBlink = 0;
+	// if(gyro == 0x68) ledBlink = 1;
+	// _delay_ms(200);
+	
+	// Test for how SPI bus effects AD0 line on MPU-9150
+	// transferSPI('W');
+	// DDRB |= (1<<4);
+	// PORTB ^= (1<<4);
+	// // PINB = (1<<4);
+	
+	// I2C Register Sniffer
+	// for(uint8_t i=0; i<255; i++){
+		// // transferSPI(i);
+		// //uint8_t test = startI2C(i, READ);
+		// uint8_t test = startI2C(0x69, WRITE);
+			// writeI2C(i);
+		// stopI2C();
+		// startI2C(0x69, READ);
+			// uint8_t value = readI2C(NACK);
+		// stopI2C();
+		// if(test != 0x38){
+			// transferSPI(i);
+			// transferSPI(value);
+		// }
+	// }
