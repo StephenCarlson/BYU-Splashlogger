@@ -163,7 +163,11 @@ ISR(INT1_vect){
 	
 }
 
-
+// ISR(PCINT2_vect){ // Does not wake uC if it is the only interrupt. Timing issue.
+	
+	// PCICR = 0; //(1<<PCIE2);
+	// PCMSK2 = 0; //(1<<PCINT16);
+// }
 
 // Interrupt Vectors
 ISR(USART_RX_vect){
@@ -171,6 +175,9 @@ ISR(USART_RX_vect){
 	
 	switch(command){
 		case 'D':
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
 			dumpSamples(testNumber); //(testNumber==0)? 0 : testNumber-1);
 			break;
 		case '+':
@@ -182,6 +189,11 @@ ISR(USART_RX_vect){
 			printf("Test#: %u\n", (testNumber+1));
 			break;
 		case 'R':
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
+			dataFlashMode(ACTIVE);
+			_delay_ms(1);
 			testNumber = 0;
 			dataFlashCleanTestBlocks(testNumber);
 			dataFlashWritePointer(testNumber);
@@ -193,6 +205,9 @@ ISR(USART_RX_vect){
 			break;
 		case 'T':
 			printf("Forced Trigger, Sampling...\n");
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
 			testSampleSequence();
 		case 'N':
 			printf("Test#: %u\n", (testNumber+1));
@@ -398,19 +413,33 @@ void loop(void){
 	}
 	LED = LOW;
 	
+	_delay_ms(300);
 	
-	
-	
-	set_sleep_mode(SLEEP_MODE_IDLE); //  SLEEP_MODE_IDLE
+	//printf("Sleep\n");
+	dataFlashMode(SLEEP);
+	ITG3200Mode(SLEEP);
+	DDRB &= 0b11011111;
+	PORTB &= 0b11011111;
+	set_sleep_mode(SLEEP_MODE_IDLE); //  SLEEP_MODE_IDLE //SLEEP_MODE_STANDBY
 	sleep_enable();
 	sleep_bod_disable();
 	sei();
 	sleep_cpu();
 	
 	sleep_disable();
+	DDRB |= 0b00100000;
+	PORTB |= 0b00100000;
+	_delay_ms(1);
+	dataFlashMode(ACTIVE);
+	ITG3200Mode(ACTIVE);
+	//printf("Awake\n");
 }
 
 void testSampleSequence(void){
+	sleep_disable();
+	dataFlashMode(ACTIVE);
+	ITG3200Mode(ACTIVE);
+
 	CS_ADXL = LOW;
 		transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
 		uint8_t fifoSamples = transferSPI(0x00);
