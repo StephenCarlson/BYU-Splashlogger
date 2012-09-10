@@ -159,6 +159,12 @@ static struct{
 } configFlags;
 
 
+ISR(INT1_vect){
+	
+}
+
+
+
 // Interrupt Vectors
 ISR(USART_RX_vect){
 	uint8_t command = UDR0;
@@ -328,6 +334,10 @@ void setup(void){
 	printHelpInfo();
 	printTriggerSources();
 	
+	
+	EICRA = (1<<ISC11)|(1<<ISC10); //0; 
+	EIMSK = (1<<INT1); //0; //|(1<<INT0);
+	
 	sei();
 }
 
@@ -387,6 +397,17 @@ void loop(void){
 		_delay_ms(50);
 	}
 	LED = LOW;
+	
+	
+	
+	
+	set_sleep_mode(SLEEP_MODE_IDLE); //  SLEEP_MODE_IDLE
+	sleep_enable();
+	sleep_bod_disable();
+	sei();
+	sleep_cpu();
+	
+	sleep_disable();
 }
 
 void testSampleSequence(void){
