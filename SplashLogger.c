@@ -178,6 +178,8 @@ ISR(USART_RX_vect){
 			DDRB |= 0b00100000;
 			PORTB |= 0b00100000;
 			_delay_ms(1);
+			dataFlashMode(ACTIVE);
+			_delay_ms(1);
 			dumpSamples(testNumber); //(testNumber==0)? 0 : testNumber-1);
 			break;
 		case '+':
@@ -400,6 +402,9 @@ void loop(void){
 		//printf("\n");
 #else
 		if(status&(1<<2)){
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
 			testSampleSequence();
 		}
 #endif
