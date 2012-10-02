@@ -1,6 +1,12 @@
 #ifndef ADXL345_H
 #define ADXL345_H
 
+#define ONETAP		6
+#define TWOTAP		5
+#define FREEFALL	4
+#define ACTIVITY	3
+#define INACTIVE	2
+
 uint16_t getAccelFIFO(uint16_t, uint8_t *);
 void ADXL345Init(void);
 void ADXL345Mode(int8_t);
@@ -44,7 +50,7 @@ void ADXL345Init(void){
 		0b00000000,	// 	2E	INT_ENABLE			[DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 		0b10000011,	// 	2F	INT_MAP				[DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 		0x00,		// 	30	INT_SOURCE READ-ONLY
-		0b00001011	// 	31	DATA_FORMAT  FULL_RES bit set
+		0b00101011	// 	31	DATA_FORMAT  FULL_RES bit set
 	};
 	
 	CS_ADXL = LOW;
@@ -75,13 +81,6 @@ void ADXL345Mode(int8_t mode){
 			transferSPI(0b00010000);
 		CS_ADXL = HIGH;
 	}
-	// if(mode == ARMED){
-		// CS_ADXL = LOW;
-			// transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
-			// transferSPI(0b00001100);
-			// transferSPI(0b01110100);
-		// CS_ADXL = HIGH;
-	// }	
 	if((mode == ACTIVE)||(mode == SAMPLING)){
 		CS_ADXL = LOW;
 			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // BW_RATE was 0x2C

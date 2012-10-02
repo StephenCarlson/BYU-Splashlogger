@@ -22,7 +22,7 @@ uint16_t getGyroSample(uint16_t index, uint8_t *array){
 }
 
 void ITG3200Mode(int8_t mode){
-	if(mode == SLEEP || mode == ARMED){
+	if(mode == SLEEP){
 		startI2C(ITG3200ADDR, WRITE);
 			writeI2C(0x3E); // Power Management
 			writeI2C(0x40); // SLEEP bit set, pg. 27
