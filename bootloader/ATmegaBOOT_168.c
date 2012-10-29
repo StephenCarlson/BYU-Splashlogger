@@ -286,7 +286,8 @@ int main(void)
 
 #ifdef WATCHDOG_MODS
 	ch = MCUSR;
-	//MCUSR = 0;
+	//MCUSR = 0; Is taken care of in Application, as in, the MCUSR=0 then 
+	// WDTCSR = Whatever sequence is redone there.
 
 	WDTCSR |= _BV(WDCE) | _BV(WDE);
 	//WDTCSR = 0;

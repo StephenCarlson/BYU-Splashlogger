@@ -24,7 +24,7 @@
 //    4			   32		2		PD2		INT0			MPU Int Line		MPUINT
 //    5			   1		3		PD3		INT1			ADXL Int 1			ADXLINT1
 //    6			   2		4		PD4		DIO				ADXL Int 2			ADXLINT2		
-//    11		   9		5		PD5					
+//    11		   9		5		PD5		DIO				Blue LED			LED			
 //    12		   10		6		PD6					
 //    13		   11		7		PD7						
 //    --		   19		-		ADC6
@@ -39,7 +39,7 @@
 
 // =======================================================================
 
-// Behavioral Switches
+// Behavioral Switches (Evoked in Makefile, shown here for reference)
 //#define ITG3200
 //#define MPU6000
 //#define MPU9150
@@ -65,10 +65,13 @@
 // System Constants
 #define DOWN 			0
 #define SLEEP			1
-#define STANDBY 		SLEEP
+#define STANDBY 		1 //SLEEP
 #define ACTIVE 			2
 #define SAMPLING		3
-//#define FAULT 			-1
+#define INT_SRC_GYRO	0
+#define INT_SRC_ADXL	1
+#define INT_SRC_WDT		2
+#define INT_SRC_UART	3
 #define HIGH			1
 #define LOW				0
 #define READ			1 // ADXL SPI Flags
@@ -138,7 +141,7 @@ uint8_t triggerStatus(void);
 void testSampleSequence(void);
 uint8_t systemSleep(uint8_t);
 uint8_t atMegaInit(void);
-void bluetoothConfig(void);
+void bluetoothMode(uint8_t);
 void gyroMode(uint8_t);
 
 void dumpSamples(uint8_t);
@@ -170,6 +173,7 @@ static volatile struct{
 	uint8_t bootloaderFlag:1;
 	uint8_t sleepFlag:1;
 	uint8_t ledBlink:1;
+	uint8_t intSource:2;
 } stateFlags;
 static volatile uint8_t pinStatesD;
 
@@ -180,11 +184,12 @@ static volatile uint8_t pinStatesD;
 ISR(WDT_vect){
 	// stateFlags.ledBlink = 1; //flashLED(2,10,40);
 	//printf("WDT\n");
+	stateFlags.intSource = INT_SRC_WDT;
 }
 
 ISR(PCINT2_vect){ // Does not wake uC if it is the only interrupt. Timing issue.
-	stateFlags.sleepFlag = 0;
-	stateFlags.ledBlink = 0;
+	//stateFlags.sleepFlag = 0;
+	//stateFlags.ledBlink = 0;
 	//printf("PCINT\n");
 	//flashLED(4,80,120);
 	// pinStatesD ^= PIND;
@@ -194,16 +199,20 @@ ISR(PCINT2_vect){ // Does not wake uC if it is the only interrupt. Timing issue.
 	//if(MPUINT)
 	//if(ADXLINT1) ;
 	
+	stateFlags.intSource = INT_SRC_UART;
+	
 	PCICR = 0; //(1<<PCIE2);
 	PCMSK2 = 0; //(1<<PCINT16);
 }
 
 ISR(INT0_vect){
-	
+	stateFlags.intSource = INT_SRC_GYRO;
+	EIMSK = 0;
 }
 
 ISR(INT1_vect){
-	
+	stateFlags.intSource = INT_SRC_ADXL;
+	EIMSK = 0;
 }
 
 ISR(USART_RX_vect){
@@ -313,7 +322,7 @@ void setup(void){
 	uint8_t startStatus = atMegaInit();
 	stateFlags.systemState = ACTIVE;
 	
-	bluetoothConfig();
+	bluetoothMode(ACTIVE);
 	
 	// Tasks and Routines
 	printf("\n\nBYU Splash Logger dev1 Sep2012\n\n");
@@ -327,7 +336,12 @@ void setup(void){
 		CS_MPU = HIGH;
 	#endif
 	
-
+	
+	ADXL345Init();
+	ADXL345Mode(ACTIVE);
+	gyroMode(ACTIVE);
+	dataFlashMode(ACTIVE);
+	
 	printf("Device ID Check: ");
 	if(deviceIdCheck()){
 		printf("OK\n");
@@ -374,11 +388,16 @@ void setup(void){
 void loop(void){
 	static uint8_t activityCount = 0;
 	
-	if(stateFlags.ledBlink){
+	//if(stateFlags.ledBlink){
 		LED = HIGH; //Assumed that sleep soon follows, show the system activity duration.
-	}
+	// }
 
 	uint8_t adxlStatus = triggerStatus();
+	printf("adxlStatus: %u\tADXLINT1: %u, EIFR: %u\n", adxlStatus, ADXLINT1, EIFR);
+	//_delay_ms(1000);
+
+	
+	
 	if(stateFlags.systemState == DOWN){
 		activityCount = (adxlStatus&(1<<ACTIVITY))?	activityCount+1 : 
 													activityCount;
@@ -388,82 +407,41 @@ void loop(void){
 			activityCount = 0;
 		// }
 	} else{
-		uint8_t testTrigger = adxlStatus
-			&(((configFlags.onOneTap)<<ONETAP) //
+		uint8_t testTrigger = adxlStatus &(
+			 ((configFlags.onOneTap)<<ONETAP) //
 			&((configFlags.onTwoTap)<<TWOTAP)
 			&((configFlags.onFreeFall)<<FREEFALL));
 		if(testTrigger){
 			ADXL345Mode(ACTIVE);
 			dataFlashMode(ACTIVE);
+			gyroMode(ACTIVE);
 			stateFlags.systemState = SAMPLING;
 			testSampleSequence();
+			stateFlags.systemState = DOWN;
 		}
 		//else if(adxlStatus&(1<<TWOTAP)){
-			stateFlags.systemState = DOWN;
-			stateFlags.ledBlink = 0;
+			//stateFlags.systemState = DOWN;
+			//stateFlags.ledBlink = 0;
 		// }
 	}
 	
-	transferSPI(activityCount|(stateFlags.systemState)<<4);
 	
-	if(stateFlags.sleepFlag == 1){ // ){ //
+	//transferSPI(activityCount|(stateFlags.systemState)<<4);
+	//LED = LOW;
+	
+	//if(stateFlags.sleepFlag == 1){ // ){ //
 		uint8_t sleepInterval = 8; //(stateFlags.systemState = DOWN)? 8: 5; //configFlags.sleepInt;
 		systemSleep(sleepInterval);
-	}
+	// }
 }
 
-uint8_t triggerStatus(void){	
+uint8_t triggerStatus(void){
 	CS_ADXL = LOW;
 		transferSPI((READ<<7) | (SINGLE<<6) | 0x30);
 		uint8_t status = transferSPI(0x00);
 	CS_ADXL = HIGH;
-	
-	// uint8_t result = status&(((configFlags.onOneTap)<<6) 
-							// &((configFlags.onTwoTap)<<5)
-							// &((configFlags.onFreeFall)<<2));
+
 	return(status & 0b01111100);
-	
-/*
-#if defined(TRIGGER_SELECT)
-	//printf("%u\t",++count);
-	if((status&(1<<6)) && (configFlags.onOneTap)){
-		//printf("[1 Tap]");
-		// if(state == 0) testSampleSequence();
-		// state = 1;
-		testSampleSequence();
-	}
-	if((status&(1<<5)) && (configFlags.onTwoTap)){
-		//printf("[2 Tap]");
-		// if(state == 0) testSampleSequence();
-		// state = 1;
-		testSampleSequence();
-	}
-	//if((status&(1<<4))) //printf("[Activity]"); // && (configFlags.onActivity)) 
-	
-	if(status&(1<<3)){
-		//printf("[Inactive]");
-		state = 0;
-	}
-	if((status&(1<<2)) && (configFlags.onFreeFall)){
-		//printf("[Freefall]");
-		// if(state == 0) testSampleSequence();
-		// state = 1;
-		testSampleSequence();
-	}
-	//printf("\n");
-#else
-	if(status&(1<<2)){
-		testSampleSequence();
-	}
-#endif
-*/
-	
-	// _delay_ms(50);
-	// CS_ADXL = LOW;
-		// transferSPI((READ<<7) | (SINGLE<<6) | 0x30);
-		// status = transferSPI(0x00);
-	// CS_ADXL = HIGH;
-	// _delay_ms(50);
 }
 
 void testSampleSequence(void){
@@ -548,65 +526,15 @@ uint8_t systemSleep(uint8_t interval){
 	//	Interval	0	1	2	3	4	5	6	7	8	9
 	//	Time in ms	16	32	64	128	256	512	1k	2k	4k	8k
 	
-	ADXL345Mode(ACTIVE);
-	dataFlashMode(SLEEP);
-	
-	cli();
-	
-	TWCR = 0;
-	TWSR = 0;
-	SPCR = 0;
-	ADMUX = 0;
-	ADCSRA = 0;
-	DIDR0 = (1<<ADC5D)|(1<<ADC4D)|(1<<ADC3D)|(1<<ADC2D)|(1<<ADC1D)|(1<<ADC0D);
-	DIDR1 = (1<<AIN1D)|(1<<AIN0D);
-	UCSR0B =0;
-	TCCR1B = 0;
-	PORTB = PORTC = PORTD = 0;
-	DDRB = DDRC = DDRD = 0;
-	
-	//MPU_VLOGIC = LOW;
-	power_all_disable();
-	
-	wdt_reset();
-	// uint8_t value = ((interval&0x08)<<WDP3)|((interval&0x04)<<WDP2)|
-		// ((interval&0x02)<<WDP1)|((interval&0x01)<<WDP0);
-	uint8_t value = ( (uint8_t)( ((configFlags.wdtSlpEn)<<WDIE)|(interval & 0x08? (1<<WDP3): 0x00)|(interval & 0x07)) );
-	MCUSR = 0;
-	WDTCSR |= (1<<WDCE)|(1<<WDE); //
-	//WDTCSR = (1<<WDIE);
-	WDTCSR = value;
-	//WDTCSR = 0;
-	//wdt_enable(9);
-	
-	pinStatesD = PIND;
-	//PCMSK2 = (1<<PCINT16);
-	//PCICR = (1<<PCIE2);
-
-	//EICRA = 0;
-	//EIMSK = (1<<INT1)|(1<<INT0);
-	
-	
-	set_sleep_mode(SLEEP_MODE_STANDBY); //  SLEEP_MODE_IDLE
-	sleep_enable();
-	sleep_bod_disable();
-	sei();
-	sleep_cpu();
-	
-	sleep_disable();
-	wdt_reset();
-	uint8_t systemReturnState = atMegaInit();
-	bluetoothConfig();
-	return systemReturnState;
-}
-
-/*
-uint8_t systemPowerDown(uint8_t interval){
-	//	Interval	0	1	2	3	4	5	6	7	8	9
-	//	Time in ms	16	32	64	128	256	512	1k	2k	4k	8k
-	
+	ADXL345Init(); // 29 Oct Critical Note! Seems that the ADXL does I2C address matching when the CS
+					// Pin is high. The datasheet has an OR-Gate solution, sort of annoying. Anyhow,
+					// I suppose that the part needs to be the last thing spoken to before sleep.
+					// Also, how his has never blown away Kyle's Logger the past year, I don't know.
 	ADXL345Mode(SLEEP);
 	dataFlashMode(SLEEP);
+	gyroMode(SLEEP);
+	bluetoothMode(SLEEP);
+	LED = LOW;
 	
 	cli();
 	
@@ -619,31 +547,30 @@ uint8_t systemPowerDown(uint8_t interval){
 	DIDR1 = (1<<AIN1D)|(1<<AIN0D);
 	UCSR0B =0;
 	TCCR1B = 0;
-	PORTB = PORTC = PORTD = 0;
+	PORTC = PORTD = 0; // PORTB = 
 	DDRB = DDRC = DDRD = 0;
+	PORTB |=0b00111111;
 	
 	//MPU_VLOGIC = LOW;
 	power_all_disable();
 	
 	wdt_reset();
-	// uint8_t value = ((interval&0x08)<<WDP3)|((interval&0x04)<<WDP2)|
-		// ((interval&0x02)<<WDP1)|((interval&0x01)<<WDP0);
-	uint8_t value = ( (uint8_t)(_BV(WDIE)|(interval & 0x08? (1<<WDP3): 0x00)|(interval & 0x07)) );
+	uint8_t value = (uint8_t)( ((configFlags.wdtSlpEn)<<WDIE) | (interval & 0x08? (1<<WDP3): 0x00) | (interval & 0x07) );
 	MCUSR = 0;
-	WDTCSR |= (1<<WDCE)|(1<<WDE); //
-	//WDTCSR = (1<<WDIE);
-	WDTCSR = value;
-	//WDTCSR = 0;
-	//wdt_enable(9);
+	WDTCSR |= (1<<WDCE)|(1<<WDE);
+	WDTCSR = 0; //value;
 	
 	pinStatesD = PIND;
 	//PCMSK2 = (1<<PCINT16);
 	//PCICR = (1<<PCIE2);
 
-	//EICRA = 0;
-	//EIMSK = (1<<INT1)|(1<<INT0);
+	EICRA = 0;
+	EIMSK = (1<<INT1); //|(1<<INT0);
 	
 	
+	// if(stateFlags.systemState == DOWN)			set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	// else if(stateFlags.systemState == SLEEP) 	set_sleep_mode(SLEEP_MODE_STANDBY);
+	// else										set_sleep_mode(SLEEP_MODE_IDLE);
 	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
 	sleep_enable();
 	sleep_bod_disable();
@@ -653,21 +580,29 @@ uint8_t systemPowerDown(uint8_t interval){
 	sleep_disable();
 	wdt_reset();
 	uint8_t systemReturnState = atMegaInit();
-	bluetoothConfig();
+	
+	LED = HIGH;
+	ADXL345Init();
+	ADXL345Mode(ACTIVE);
+	dataFlashMode(ACTIVE);
+	gyroMode(ACTIVE);
+	//bluetoothMode(ACTIVE);
+	
 	return systemReturnState;
 }
-*/
 
 uint8_t atMegaInit(void){
 	uint8_t startupStatus = MCUSR; //wdt_init(); //
 	MCUSR = 0;
 	WDTCSR |= _BV(WDCE) | _BV(WDE);
 	//WDTCSR = 0; //_BV(WDP3) | _BV(WDP0);
-	WDTCSR = _BV(WDE) | _BV(WDP3) | _BV(WDP0);
+	//WDTCSR = _BV(WDE) | _BV(WDP3) | _BV(WDP0);
+	WDTCSR = 0;
 	wdt_reset();
 	
 	// System
-	MCUCR |= (1<<PUD);		// Pull-up Disable
+	//MCUCR |= (1<<PUD);		// Pull-up Disable
+	MCUCR = 0;
 	PRR = 0;
 
 	// Timers
@@ -680,7 +615,8 @@ uint8_t atMegaInit(void){
 	DDRB |= 0b00101111; //	XTAL2	XTAL1	SCK		MISO		MOSI		CS_FLASH	CS_ADXL	MPU_VLOGIC
     DDRC |= 0b00000000; //	--		Reset	SCL		SDA
     DDRD |= 0b00100010; //					LED		ADXLINT2	ADXLINT1	MPUINT		TXD		RXD
-	PORTB |=0b00000111; // MPU_VLOGIC is HIGH
+	//PORTB |=0b00000111; // MPU_VLOGIC is HIGH
+	PORTB |=0b00111111;
 	
 	// Serial Port
 	UBRR0H = UART_UBRR >> 8;
@@ -712,7 +648,7 @@ uint8_t atMegaInit(void){
 	return startupStatus;
 }
 
-void bluetoothConfig(void){
+void bluetoothMode(uint8_t mode){
 	#if defined(RN42_BLUETOOTH)
 	printf("$$$");
 	_delay_ms(5);

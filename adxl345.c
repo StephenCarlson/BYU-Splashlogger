@@ -10,6 +10,7 @@
 uint16_t getAccelFIFO(uint16_t, uint8_t *);
 void ADXL345Init(void);
 void ADXL345Mode(int8_t);
+uint8_t ADXL345Status(void);
 
 volatile uint8_t adxlInitFlag = 0;
 
@@ -77,20 +78,25 @@ void ADXL345Mode(int8_t mode){
 	if(mode == SLEEP){
 		CS_ADXL = LOW;
 			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
-			transferSPI(0b00001111); // Measure off, temp
-			transferSPI(0b00010000);
+			transferSPI(0b00001111); // 0[7:6], [Link][AutoSleep][Measure][Sleep] WakeRate[1:0]
+			transferSPI(0b00010000); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 		CS_ADXL = HIGH;
 	}
 	if((mode == ACTIVE)||(mode == SAMPLING)){
 		CS_ADXL = LOW;
-			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // BW_RATE was 0x2C
-			//transferSPI(0b00001111); // Rate code on Table 6 on pg. 6 0110 for slow
-			transferSPI(0b00101000); // MEASURE bit set, pg. 16
+			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
+			transferSPI(0b00101000); // 0[7:6], [Link][AutoSleep][Measure][Sleep] WakeRate[1:0]
 			transferSPI(0b01101110); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
-			//transferSPI(0b01111110); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 		CS_ADXL = HIGH;
 	}
 }
 
+uint8_t ADXL345Status(void){
+	CS_ADXL = LOW;
+		transferSPI((READ<<7) | (SINGLE<<6) | 0x2B);
+		uint8_t status = transferSPI(0x00);
+	CS_ADXL = HIGH;
+	return status;
+}
 
 #endif
