@@ -3,9 +3,9 @@
 
 #define ONETAP		6
 #define TWOTAP		5
-#define FREEFALL	4
-#define ACTIVITY	3
-#define INACTIVE	2
+#define ACTIVITY	4
+#define INACTIVE	3
+#define FREEFALL	2
 
 uint16_t getAccelFIFO(uint16_t, uint8_t *);
 void ADXL345Init(void);
@@ -38,7 +38,7 @@ void ADXL345Init(void){
 		0x30,		// 	21	DUR			30ms	625 uS/LSB		Max time/width of tap peak
 		0x50,		// 	22	Latent		100ms	1.25 ms/LSB		No other peak until after this
 		0xF0,		// 	23	Window		300ms	1.25 ms/LSB 	Period after latent to make a second peak
-		0x08,		// 	24	THRESH_ACT	.5g		62.5 mg/LSB unsigned	Exceed value to flag activity
+		0x40,		// 	24	THRESH_ACT	1.5g		62.5 mg/LSB unsigned	Exceed value to flag activity
 		0x04,		// 	25	THRESH_INACT	.25g	62.5 mg/LSB unsigned	Stay below for TIME_INACT for inactivity
 		0x05,		// 	26	TIME_INACT	5sec	1 sec/LSB
 		0b11111111,	// 	27	ACT_INACT_CTL 		ACT[dc/AC][X|Y|Z] INACT[dc/AC][X|Y|Z]
@@ -61,7 +61,7 @@ void ADXL345Init(void){
 		}
 	CS_ADXL = HIGH;
 	
-	_delay_ms(1);
+	_delay_us(20);
 	
 	// FIFO
 	CS_ADXL = LOW;
@@ -75,14 +75,14 @@ void ADXL345Init(void){
 void ADXL345Mode(int8_t mode){
 	if(!adxlInitFlag) ADXL345Init();
 	
-	if(mode == SLEEP){
+	if(mode == SLEEP){ // Note 31 Oct: Was 11 for sleep bits, now is 8Hz
 		CS_ADXL = LOW;
 			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
-			transferSPI(0b00001111); // 0[7:6], [Link][AutoSleep][Measure][Sleep] WakeRate[1:0]
+			transferSPI(0b00001100); // 0[7:6], [Link][AutoSleep][Measure][Sleep] WakeRate[1:0]
 			transferSPI(0b00010000); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 		CS_ADXL = HIGH;
 	}
-	if((mode == ACTIVE)||(mode == SAMPLING)){
+	else{ //if(mode == ACTIVE){
 		CS_ADXL = LOW;
 			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
 			transferSPI(0b00101000); // 0[7:6], [Link][AutoSleep][Measure][Sleep] WakeRate[1:0]

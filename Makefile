@@ -129,9 +129,10 @@ CSTANDARD = -std=gnu99
 CDEFS = -DF_CPU=$(F_CPU)UL
 
 # Original Splash Logger (Kyle's)
-CDEFS += -DITG3200
+#CDEFS += -DITG3200
 
 # microLogger w/ MPU6000
+CDEFS += -DMPU6000 -DRN42_BLUETOOTH
 #CDEFS += -DMPU6000 -DRN42_BLUETOOTH
 
 # microLogger w/ MPU9150
@@ -281,17 +282,19 @@ LDFLAGS += $(PRINTF_LIB) $(SCANF_LIB) $(MATH_LIB)
 # Programming hardware
 # Type: avrdude -c ?
 # to get a full listing.
-#
+
+
+
 AVRDUDE_PROGRAMMER = arduino
 #AVRDUDE_PROGRAMMER = stk500
 #stk500v1
 #arduino
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
-#AVRDUDE_PORT = COM5	my programmer
-AVRDUDE_PORT = COM5
+#AVRDUDE_PORT = COM5	my programmer buspirate:6
+AVRDUDE_PORT = COM20
 
-AVRDUDE_BAUD = -b 57600
+#AVRDUDE_BAUD = -b 57600
 #AVRDUDE_BAUD = 115200
 
 AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex:i
@@ -310,10 +313,10 @@ AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex:i
 # Increase verbosity level.  Please use this when submitting bug
 # reports about avrdude. See <http://savannah.nongnu.org/projects/avrdude> 
 # to submit bug reports.
-#AVRDUDE_VERBOSE = -v -v
+AVRDUDE_VERBOSE = -v -v
 
-#AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -p $(MCU) 
-AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) $(AVRDUDE_BAUD) -p $(MCU) 
+AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -p $(MCU) 
+#AVRDUDE_FLAGS = -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) $(AVRDUDE_BAUD) -p $(MCU) 
 AVRDUDE_FLAGS += $(AVRDUDE_NO_VERIFY)
 AVRDUDE_FLAGS += $(AVRDUDE_VERBOSE)
 AVRDUDE_FLAGS += $(AVRDUDE_ERASE_COUNTER)

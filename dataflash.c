@@ -111,11 +111,11 @@ uint8_t dataFlashStatus(void){
 }
 
 void dataFlashMode(int8_t mode){
-	if(mode == SLEEP){
+	if(mode == SLEEP){ // Time to Deep power down = tEDPD = 3us Max
 		CS_FLASH = LOW;
 			transferSPI(0xB9);
 		CS_FLASH = HIGH;
-	} else{
+	} else{ // Notes: Resume from Power down is tRDPD = 30us Max
 		CS_FLASH = LOW;
 			transferSPI(0xAB);
 		CS_FLASH = HIGH;
