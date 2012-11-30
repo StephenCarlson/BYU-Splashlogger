@@ -234,7 +234,6 @@ ISR(USART_RX_vect){
 			break;
 		case 'R':
 			testNumber = 0;
-			dataFlashMode(ACTIVE);
 			dataFlashCleanTestBlocks(testNumber);
 			dataFlashWritePointer(testNumber);
 			while(dataFlashStatus());
@@ -246,6 +245,7 @@ ISR(USART_RX_vect){
 		case 'T':
 			printf("Forced Trigger, Sampling...\n");
 			stateFlags.systemState = FORCE_TRIGGER;
+			break;
 		case 'N':
 			printf("Test#: %u\n", (testNumber+1));
 			break;
@@ -396,6 +396,7 @@ void loop(void){
 		case INT_SRC_WDT:
 			wdtIntCntDwn = (wdtIntCntDwn>0)? wdtIntCntDwn-1: 0;
 			WDTCSR |= _BV(WDIE);
+			//wdt_reset();
 			break;
 		case INT_SRC_UART:
 			wdtIntCntDwn = TIMEOUT_SERIAL;
@@ -439,6 +440,7 @@ void loop(void){
 	} else{
 		if(stateFlags.systemState != STANDBY){
 			ADXL345Mode(ACTIVE);
+			dataFlashMode(ACTIVE);
 		}
 		stateFlags.systemState = STANDBY;
 	}
@@ -889,6 +891,8 @@ void flashLED(uint8_t count, uint8_t high, uint8_t low){
 
 
 // COM20 for AD03
+
+// ACCIPITER 001F81000830
 
 /*
 
