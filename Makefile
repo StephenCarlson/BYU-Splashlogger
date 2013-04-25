@@ -70,8 +70,8 @@ FORMAT = ihex
 
 
 # Target file name (without extension).
-#TARGET = SplashLogger
-TARGET = microLogger
+TARGET = SplashLogger
+#TARGET = microLogger
 
 # Object files directory
 #     To put object files in current directory, use a dot (.), do NOT make
@@ -132,7 +132,7 @@ CDEFS = -DF_CPU=$(F_CPU)UL
 #CDEFS += -DITG3200
 
 # microLogger w/ MPU6000
-CDEFS += -DMPU6000 -DRN42_BLUETOOTH
+#CDEFS += -DMPU6000
 #CDEFS += -DMPU6000 -DRN42_BLUETOOTH
 
 # microLogger w/ MPU9150

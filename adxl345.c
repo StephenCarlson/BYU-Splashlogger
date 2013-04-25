@@ -86,7 +86,7 @@ void ADXL345Mode(int8_t mode){
 		CS_ADXL = LOW;
 			transferSPI((WRITE<<7) | (MULTI<<6) | 0x2D); // POWER_CTL
 			transferSPI(0b00101000); // 0[7:6], [Link][AutoSleep][Measure][Sleep] WakeRate[1:0]
-			transferSPI(0b01101110); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
+			transferSPI(0b01111110); // [DataReady][1 Tap][2 Taps][Activity][Inactivity][FreeFall][Watermark][OverRun]
 		CS_ADXL = HIGH;
 	}
 }
