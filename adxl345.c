@@ -31,13 +31,13 @@ uint16_t getAccelFIFO(uint16_t index, uint8_t *array){
 
 void ADXL345Init(void){
 	char configArray[] = {					// 21 Values
-		0xB0,		// 	1D	THRESH_TAP	6g		62.5 mg/LSB unsigned 0xFF = +16 g
+		0xC0,		// 	1D	THRESH_TAP	12g		62.5 mg/LSB unsigned 0xFF = +16 g
 		0x00,		// 	1E	OFSX					15.6 mg/LSB signed 0x7F = +2 g
 		0x00,		// 	1F	OFSY
 		0x00,		// 	20	OFSZ
-		0x30,		// 	21	DUR			30ms	625 uS/LSB		Max time/width of tap peak
-		0x50,		// 	22	Latent		100ms	1.25 ms/LSB		No other peak until after this
-		0xF0,		// 	23	Window		300ms	1.25 ms/LSB 	Period after latent to make a second peak
+		0x50,		// 	21	DUR			60ms	625 uS/LSB		Max time/width of tap peak
+		0x28,		// 	22	Latent		50ms	1.25 ms/LSB		No other peak until after this
+		0x50,		// 	23	Window		100ms	1.25 ms/LSB 	Period after latent to make a second peak
 		0x40,		// 	24	THRESH_ACT	1.5g		62.5 mg/LSB unsigned	Exceed value to flag activity
 		0x04,		// 	25	THRESH_INACT	.25g	62.5 mg/LSB unsigned	Stay below for TIME_INACT for inactivity
 		0x05,		// 	26	TIME_INACT	5sec	1 sec/LSB

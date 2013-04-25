@@ -41,7 +41,7 @@
 
 // Behavioral Switches
 #define ITG3200
-//#define TRIGGER_SELECT
+#define TRIGGER_SELECT
 
 // Debug Switches
 //#define DEBUG_MASTER // Wiped out with my 6 April Trimming
@@ -376,27 +376,39 @@ void loop(void){
 #if defined(TRIGGER_SELECT)
 		//printf("%u\t",++count);
 		if((status&(1<<6)) && (configFlags.onOneTap)){
-			//printf("[1 Tap]");
+			// printf("[1 Tap]");
 			// if(state == 0) testSampleSequence();
 			// state = 1;
+			
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
 			testSampleSequence();
 		}
 		if((status&(1<<5)) && (configFlags.onTwoTap)){
-			//printf("[2 Tap]");
+			// printf("[2 Tap]");
 			// if(state == 0) testSampleSequence();
 			// state = 1;
+			
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
 			testSampleSequence();
 		}
 		//if((status&(1<<4))) //printf("[Activity]"); // && (configFlags.onActivity)) 
 		
 		if(status&(1<<3)){
-			//printf("[Inactive]");
+			// printf("[Inactive]");
 			state = 0;
 		}
 		if((status&(1<<2)) && (configFlags.onFreeFall)){
-			//printf("[Freefall]");
+			// printf("[Freefall]");
 			// if(state == 0) testSampleSequence();
 			// state = 1;
+			
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
 			testSampleSequence();
 		}
 		//printf("\n");
@@ -418,26 +430,30 @@ void loop(void){
 	}
 	LED = LOW;
 	
+	
 	_delay_ms(300);
 	
-	//printf("Sleep\n");
-	dataFlashMode(SLEEP);
-	ITG3200Mode(SLEEP);
-	DDRB &= 0b11011111;
-	PORTB &= 0b11011111;
-	set_sleep_mode(SLEEP_MODE_IDLE); //  SLEEP_MODE_IDLE //SLEEP_MODE_STANDBY
-	sleep_enable();
-	sleep_bod_disable();
-	sei();
-	sleep_cpu();
+	if((ADXLINT1)==0){
+		// printf("Sleep\n");
+		dataFlashMode(SLEEP);
+		ITG3200Mode(SLEEP);
+		DDRB &= 0b11011111;
+		PORTB &= 0b11011111;
+		set_sleep_mode(SLEEP_MODE_IDLE); //  SLEEP_MODE_IDLE //SLEEP_MODE_STANDBY
+		sleep_enable();
+		sleep_bod_disable();
+		sei();
+		sleep_cpu();
+		
+		sleep_disable();
+		DDRB |= 0b00100000;
+		PORTB |= 0b00100000;
+		_delay_ms(1);
+		dataFlashMode(ACTIVE);
+		ITG3200Mode(ACTIVE);
+		// printf("Awake\n");
+	}
 	
-	sleep_disable();
-	DDRB |= 0b00100000;
-	PORTB |= 0b00100000;
-	_delay_ms(1);
-	dataFlashMode(ACTIVE);
-	ITG3200Mode(ACTIVE);
-	//printf("Awake\n");
 }
 
 void testSampleSequence(void){
