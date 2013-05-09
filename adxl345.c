@@ -7,12 +7,23 @@
 #define INACTIVE	3
 #define FREEFALL	2
 
+void getAccelSingle(uint8_t *array);
 uint16_t getAccelFIFO(uint16_t, uint8_t *);
 void ADXL345Init(void);
 void ADXL345Mode(int8_t);
 uint8_t ADXL345Status(void);
 
 volatile uint8_t adxlInitFlag = 0;
+
+
+void getAccelSingle(uint8_t *array){
+	CS_ADXL = LOW;
+		transferSPI((READ<<7) | (MULTI<<6) | 0x32);
+		for(uint8_t i=0; i<6; i++){
+			array[i] = transferSPI(0x00);
+		}
+	CS_ADXL = HIGH;
+}
 
 uint16_t getAccelFIFO(uint16_t index, uint8_t *array){	
 	for(uint8_t j=0; j<ADXL_FIFO; j++){

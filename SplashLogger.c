@@ -112,7 +112,8 @@ void setup(void);
 void loop(void);
 void testSampleSequence(void);
 
-void dumpSamples(uint8_t);
+void dumpAllSamples(uint8_t);
+void dumpSample(uint8_t);
 uint16_t getBatt(void);
 char deviceIdCheck(void);
 void printHelpInfo(void);
@@ -180,7 +181,15 @@ ISR(USART_RX_vect){
 			_delay_ms(1);
 			dataFlashMode(ACTIVE);
 			_delay_ms(1);
-			dumpSamples(testNumber); //(testNumber==0)? 0 : testNumber-1);
+			dumpSample(testNumber); //(testNumber==0)? 0 : testNumber-1);
+			break;
+		case 'A':
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
+			dataFlashMode(ACTIVE);
+			_delay_ms(1);
+			dumpAllSamples(testNumber);
 			break;
 		case '+':
 			testNumber = (testNumber >= TEST_MAX)? TEST_MAX : testNumber + 1;
@@ -552,9 +561,15 @@ void testSampleSequence(void){
 }
 
 
+void dumpAllSamples(uint8_t test){
+	if(test>TEST_MAX) return;
+	for(uint8_t t=0; t <= test; t++){
+		printf("Test#: %u\n",(t+1));
+		dumpSample(t);
+	}
+}
 
-
-void dumpSamples(uint8_t test){
+void dumpSample(uint8_t test){
 	if(test>TEST_MAX) return;
 	uint16_t page = ((TEST_BLOCKS*test)+TEST_OFFSET)<<3;
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
@@ -655,6 +670,7 @@ void printHelpInfo(void){
 	printf("\nConsole Useage:\n"
 		"+/-\tInc/Dec#\n"
 		"D\tDump\n"
+		"A\tSuperDump (All from 1 to Test#)\n"
 		"R\tReset Test#=1\n"
 		"B\tBattery mV\n"
 		"N\tCurrent Test#\n"

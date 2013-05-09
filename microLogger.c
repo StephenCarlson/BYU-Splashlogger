@@ -46,7 +46,7 @@
 //#define RN42_BLUETOOTH
 
 // Debug Switches
-//#define DEBUG_MAIN_LOOP
+#define DEBUG_MAIN_LOOP
 
 // Behavioral Parameters
 #define TIMEOUT_SERIAL	10 // Multiply by Watchdog Period
@@ -73,7 +73,7 @@
 #define SLEEP			1
 #define STANDBY 		1 //SLEEP
 #define ACTIVE 			2
-#define FORCE_TRIGGER	3
+#define TRIGGERED	3
 #define INT_SRC_CLEAR	0
 #define INT_SRC_INTx	1
 #define INT_SRC_WDT		2
@@ -143,6 +143,7 @@ typedef struct{
 // Function Prototypes
 void setup(void);
 void loop(void);
+void printMonitor(void);
 uint8_t triggerStatus(void);
 void testSampleSequence(void);
 uint8_t systemSleep(uint8_t);
@@ -150,6 +151,7 @@ uint8_t atMegaInit(void);
 void bluetoothMode(uint8_t);
 void gyroMode(uint8_t);
 
+void dumpAllSamples(uint8_t);
 void dumpSamples(uint8_t);
 uint16_t getBatt(void);
 char deviceIdCheck(void);
@@ -180,9 +182,10 @@ static volatile struct{
 	uint8_t uartSuppress:1;
 	uint8_t ledBlink:1;
 	uint8_t intSource:2;
+	uint8_t monitorMode:1;
 } stateFlags;
 
-static uint8_t tempArray[6];
+//static uint8_t tempArray[6];
 
 // Interrupt Vectors
 ISR(WDT_vect){
@@ -207,6 +210,7 @@ ISR(INT1_vect){
 
 ISR(USART_RX_vect){
 	stateFlags.intSource = INT_SRC_UART;
+	stateFlags.monitorMode = 0;
 	
 	if(stateFlags.uartSuppress) return;
 	
@@ -224,6 +228,14 @@ ISR(USART_RX_vect){
 			break;
 		case 'D':
 			dumpSamples(testNumber);
+			break;
+		case 'A':
+			DDRB |= 0b00100000;
+			PORTB |= 0b00100000;
+			_delay_ms(1);
+			dataFlashMode(ACTIVE);
+			_delay_ms(1);
+			dumpAllSamples(testNumber);
 			break;
 		case '+':
 			testNumber = (testNumber >= TEST_MAX)? TEST_MAX : testNumber + 1;
@@ -244,11 +256,15 @@ ISR(USART_RX_vect){
 			printf("Battery: %u\n", getBatt());
 			break;
 		case 'T':
-			printf("Forced Trigger, Sampling...\n");
-			stateFlags.systemState = FORCE_TRIGGER;
+			if(stateFlags.systemState != TRIGGERED){
+				stateFlags.systemState = TRIGGERED;
+			}
 			break;
 		case 'N':
 			printf("Test#: %u\n", (testNumber+1));
+			break;
+		case 'M':
+			stateFlags.monitorMode = 1;
 			break;
 		// case 'Z':
 			// stateFlags.systemState = DOWN;
@@ -259,7 +275,7 @@ ISR(USART_RX_vect){
 			break;
 		case '7':
 			configFlags.wdtSlpEn ^= 1;
-			printf("Sleep LED Heartbeat: ");
+			printf("Sleep Behavior: ");
 			if(configFlags.wdtSlpEn) printf("Enabled\n");
 			else printf("Disabled\n");
 			break;
@@ -286,19 +302,19 @@ ISR(USART_RX_vect){
 			if(configFlags.onFreeFall) printf("Enabled\n");
 			else printf("Disabled\n");
 			break;
-		case '`':
+		case '~':
 			eeprom_update_byte((uint8_t*)EEPROM_START,(*(uint8_t*) &configFlags)); // *((uint8_t*) &configFlags)
 			printTriggerSources();
 			break;
 		default:
 			
-			getGyroSample(0, tempArray);
-			printf("_G\t");
-			for(uint8_t l=0; l<6; l+=2){
-				int16_t value = (tempArray[l]<<8)|tempArray[l+1];
-				printf("%d\t",value);
-			}
-			printf("\n");
+			// getGyroSample(0, tempArray);
+			// printf("_G\t");
+			// for(uint8_t l=0; l<6; l+=2){
+				// int16_t value = (tempArray[l]<<8)|tempArray[l+1];
+				// printf("%d\t",value);
+			// }
+			// printf("\n");
 			break;
 	}	
 }
@@ -319,8 +335,13 @@ void setup(void){
 	bluetoothMode(ACTIVE);
 	
 	// Tasks and Routines
-	printf("\n\nBYU Splash Logger 30Nov2012\n\n");
-	printf("Reset Status: %X\n", startStatus);
+	printf("\n\nBYU Splash Logger May2013\n\n");
+	printf("Reset Source: "); //%X\n",startStatus); //%X\n", startStatus);
+	if(startStatus&WDRF) printf("WatchDog\t"); // From iom328p.h in AVR Include Folder
+	if(startStatus&BORF) printf("BrownOut\t");
+	if(startStatus&EXTRF) printf("External\t");
+	if(startStatus&PORF) printf("PowerOn\t");
+	printf("\n\n");
 	//	WDRF BORF EXTRF PORF
 	
 	flashLED(10,10,40);
@@ -394,20 +415,25 @@ void loop(void){
 	_delay_us(5);
 	LED = LOW;
 	
-	if(stateFlags.intSource==INT_SRC_CLEAR && stateFlags.systemState == DOWN) _delay_ms(100); // 
+	if(stateFlags.intSource==INT_SRC_CLEAR && stateFlags.systemState == DOWN) _delay_ms(100); // Waked by UART, wait for next character to register.
 	switch(stateFlags.intSource){
 		case INT_SRC_WDT:
-			wdtIntCntDwn = (wdtIntCntDwn>0)? wdtIntCntDwn-1: 0;
-			#ifdef DEBUG_MAIN_LOOP
-			printf("T: %u\tA: %u\tI: %X\tWDT: %X\tState: ",wdtIntCntDwn, activityCount, stateFlags.intSource, WDTCSR);
-			switch(stateFlags.systemState){
-				case DOWN:		printf("DOWN\n"); break;
-				case SLEEP:		printf("SLEEP\n"); break;
-				case ACTIVE:	printf("ACTIVE\n"); break;
-				default: printf("BAD STATE!\n");
+			if(configFlags.wdtSlpEn){
+				wdtIntCntDwn = (wdtIntCntDwn>0)? wdtIntCntDwn-1: 0;
+				//#ifdef DEBUG_MAIN_LOOP
+				printf("T: %u\tA: %u\tI: %X\tWDT: %X\tState: ",wdtIntCntDwn, activityCount, stateFlags.intSource, WDTCSR);
+				switch(stateFlags.systemState){
+					case DOWN:		printf("DOWN\n"); break;
+					case SLEEP:		printf("SLEEP\n"); break;
+					case ACTIVE:	printf("ACTIVE\n"); break;
+					default: printf("BAD STATE!\n");
+				}
+				//#endif
+				// WDTCSR |= _BV(WDIE);
 			}
-			#endif
-			WDTCSR |= _BV(WDIE);
+			else{
+				wdtIntCntDwn = 100;
+			}
 			wdt_reset();
 			break;
 		case INT_SRC_UART:
@@ -426,13 +452,21 @@ void loop(void){
 		 ((configFlags.onOneTap)<<ONETAP)
 		&((configFlags.onTwoTap)<<TWOTAP)
 		&((configFlags.onFreeFall)<<FREEFALL));
-	if(testTrigger || stateFlags.systemState == FORCE_TRIGGER){
-		stateFlags.systemState = ACTIVE;
+	if(testTrigger || stateFlags.systemState == TRIGGERED){
+		stateFlags.systemState = TRIGGERED;
 		dataFlashMode(ACTIVE);
 		gyroMode(ACTIVE);
 		ADXL345Mode(ACTIVE);
 		testSampleSequence();
 	}
+	
+	if((stateFlags.systemState == STANDBY) && (stateFlags.monitorMode)){
+		wdtIntCntDwn = 250;
+		printMonitor();
+	}
+	
+	//if(TCNT1&0x1000)printf(" \r");
+	//printf("\r");
 	
 	// Moore and Mealy Transitions
 	if(wdtIntCntDwn==0){
@@ -465,6 +499,18 @@ void loop(void){
 	}
 }
 
+void printMonitor(void){
+	uint8_t singleSample[6];
+	getAccelSingle(singleSample);
+	
+	printf("_T\t%u\t_A\t",TCNT1);
+	for(uint8_t l=0; l<6; l+=2){
+		int16_t value = singleSample[l]|(singleSample[l+1]<<8);
+		printf("%d\t",value);
+	}
+	printf("\n");
+}
+
 uint8_t triggerStatus(void){
 	CS_ADXL = LOW;
 		transferSPI((READ<<7) | (SINGLE<<6) | 0x30);
@@ -475,6 +521,7 @@ uint8_t triggerStatus(void){
 }
 
 void testSampleSequence(void){
+	printf("Triggered...");
 	CS_ADXL = LOW;
 		transferSPI((READ<<7) | (SINGLE<<6) | 0x39);
 		uint8_t fifoSamples = transferSPI(0x00);
@@ -581,7 +628,7 @@ uint8_t systemSleep(uint8_t interval){
 	//uint8_t value = (uint8_t)( ((configFlags.wdtSlpEn)<<WDIE) | (interval & 0x08? (1<<WDP3): 0x00) | (interval & 0x07) );
 	MCUSR = 0;
 	WDTCSR |= (1<<WDCE)|(1<<WDE);
-	WDTCSR = 0; //value;
+	WDTCSR = _BV(WDIE) | _BV(WDP3) | _BV(WDP0); //value;
 	
 	PCMSK2 = (1<<PCINT16);
 	PCICR = (1<<PCIE2);
@@ -619,7 +666,7 @@ uint8_t atMegaInit(void){
 	WDTCSR |= _BV(WDCE) | _BV(WDE); // Three Options Below:
 	// Was this WDTCSR = _BV(WDIE) | _BV(WDP2) | _BV(WDP1) | _BV(WDE); // Hardwire the WDT for 1 Sec
 	//WDTCSR = _BV(WDE) | _BV(WDP3) | _BV(WDP0);
-	WDTCSR = 0;
+	WDTCSR = _BV(WDIE) | _BV(WDP3); // | _BV(WDP1) | _BV(WDP0); //0;
 	wdt_reset();
 	
 	// System
@@ -677,15 +724,15 @@ void bluetoothMode(uint8_t mode){
 	
 	if(mode == SLEEP){
 		//putUARTchar(
-		printf("$$$");
+		printf("$$$\n");
 		_delay_ms(50);
 		// printf("+\n");
 		// _delay_ms(5);
 		printf("ST,255\n");
 		_delay_ms(50);
-		printf("SW,B200"); // 8C80 for 2sec
+		printf("SW,B200\n"); // 8C80 for 2sec
 		_delay_ms(50);
-		printf("S|,0120"); // 
+		printf("S|,0120\n"); // 
 		_delay_ms(50);
 		printf("---\n");
 		_delay_ms(5);
@@ -718,7 +765,16 @@ void gyroMode(uint8_t mode){
 	#endif
 }
 
+void dumpAllSamples(uint8_t test){
+	if(test>TEST_MAX) return;
+	for(uint8_t t=0; t <= test; t++){
+		printf("Test#: %u\n",(t+1));
+		dumpSamples(t);
+	}
+}
+
 void dumpSamples(uint8_t test){
+	stateFlags.intSource = INT_SRC_CLEAR;
 	if(test>TEST_MAX) return;
 	uint16_t page = ((TEST_BLOCKS*test)+TEST_OFFSET)<<3;
 	for(uint8_t i=0; i<(8*TEST_BLOCKS); i++){
@@ -760,6 +816,13 @@ void dumpSamples(uint8_t test){
 		}
 		
 		wdt_reset();
+		if(UDR0 == ' '){
+			WDTCSR |= _BV(WDCE) | _BV(WDE);
+			WDTCSR = _BV(WDE);
+			while(1);
+		}
+		//if(stateFlags.intSource == INT_SRC_UART) return;
+		
 		for(uint8_t k=0; k<9; k++){
 			printf("_G\t");
 			for(uint8_t l=0; l<6; l+=2){
@@ -842,18 +905,22 @@ char deviceIdCheck(void){
 void printHelpInfo(void){
 	printf("\nConsole Useage:\n"
 		"+/-\tInc/Dec#\n"
-		"D\tDump\n"
+		"D\tDump Selected (<sp> to Halt)\n"
+		"A\tSuperDump (All from 1 to Test#)\n"
 		"R\tReset Test#=1\n"
 		"B\tBattery mV\n"
 		"N\tCurrent Test#\n"
+		"M\tMonitor Mode (any key to stop)\n"
 		"T\tForce Trigger\n"
-		"1 to 3\tToggle Trigger Sources\n"
-		"0\tWrite Toggles to EEPROM and Review\n"
+		"1,2,3\tToggle Trigger Sources\n"
+		"7\tToggle Sleep Mode\n"
+		"~\tWrite Toggles to EEPROM and Review\n"
+		"0 <sp>\tSoft Reset\n"
 		"?\tConsole Useage\n\n");
 	printf("Impending Test# (Stored in Flash): %u\n\n", (dataFlashReadByte(0,0) +1));
 	printf("Important Info: _T units are 62.5 kHz clock ticks, roll over on 2^16\n"
 		"Test Duration: 3.00 Sec; 9600 Sa from ADXL345 @ 3200 Sa/sec +/-0.5%%\n\n");
-	printf("Sleep Heartbeat: ");
+	printf("Sleep Behavior: ");
 			if(configFlags.wdtSlpEn) printf("Enabled\n");
 			else printf("Disabled\n");
 	//printf("Heartbeat Period: %u\n", configFlags.sleepInterval);

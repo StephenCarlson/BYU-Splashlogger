@@ -70,8 +70,8 @@ FORMAT = ihex
 
 
 # Target file name (without extension).
-TARGET = SplashLogger
-#TARGET = microLogger
+#TARGET = SplashLogger
+TARGET = microLogger
 
 # Object files directory
 #     To put object files in current directory, use a dot (.), do NOT make
@@ -132,7 +132,7 @@ CDEFS = -DF_CPU=$(F_CPU)UL
 #CDEFS += -DITG3200
 
 # microLogger w/ MPU6000
-#CDEFS += -DMPU6000
+CDEFS += -DMPU6000
 #CDEFS += -DMPU6000 -DRN42_BLUETOOTH
 
 # microLogger w/ MPU9150
@@ -285,17 +285,17 @@ LDFLAGS += $(PRINTF_LIB) $(SCANF_LIB) $(MATH_LIB)
 
 
 
-AVRDUDE_PROGRAMMER = arduino
-#AVRDUDE_PROGRAMMER = stk500
+#AVRDUDE_PROGRAMMER = arduino
+AVRDUDE_PROGRAMMER = stk500
 #stk500v1
 #arduino
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
-#AVRDUDE_PORT = COM5	my programmer buspirate:6
-AVRDUDE_PORT = COM20
+AVRDUDE_PORT = COM6
+#AVRDUDE_PORT = COM20
 
 #AVRDUDE_BAUD = -b 57600
-#AVRDUDE_BAUD = 115200
+AVRDUDE_BAUD = 115200
 
 AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex:i
 #AVRDUDE_WRITE_EEPROM = -U eeprom:w:$(TARGET).eep
