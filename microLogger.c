@@ -421,7 +421,7 @@ void loop(void){
 			if(configFlags.wdtSlpEn){
 				wdtIntCntDwn = (wdtIntCntDwn>0)? wdtIntCntDwn-1: 0;
 				//#ifdef DEBUG_MAIN_LOOP
-				printf("T: %u\tA: %u\tI: %X\tWDT: %X\tState: ",wdtIntCntDwn, activityCount, stateFlags.intSource, WDTCSR);
+				printf("T: %u\tAct: %u\tIntSrc: %X\tWDTCSR: %X\tState: ",wdtIntCntDwn, activityCount, stateFlags.intSource, WDTCSR);
 				switch(stateFlags.systemState){
 					case DOWN:		printf("DOWN\n"); break;
 					case SLEEP:		printf("SLEEP\n"); break;
@@ -431,9 +431,6 @@ void loop(void){
 				//#endif
 				// WDTCSR |= _BV(WDIE);
 			}
-			else{
-				wdtIntCntDwn = 100;
-			}
 			wdt_reset();
 			break;
 		case INT_SRC_UART:
@@ -441,23 +438,26 @@ void loop(void){
 			break;
 	}
 	stateFlags.intSource = INT_SRC_CLEAR;
+	
+	if((configFlags.wdtSlpEn) == 0) wdtIntCntDwn = 100;
 
 	uint8_t adxlStatus = triggerStatus();
 	activityCount = (adxlStatus&(1<<ACTIVITY))?	activityCount+1 : activityCount;
 	if(activityCount >= WAKE_ACT_CNT){
 		activityCount = 0;
-		wdtIntCntDwn = (wdtIntCntDwn+TIMEOUT_STDBY > 250)? 250 : wdtIntCntDwn+TIMEOUT_STDBY;
+		wdtIntCntDwn = (wdtIntCntDwn+TIMEOUT_STDBY > 240)? 240 : wdtIntCntDwn+TIMEOUT_STDBY;
 	}
 	uint8_t testTrigger = adxlStatus &(
 		 ((configFlags.onOneTap)<<ONETAP)
 		&((configFlags.onTwoTap)<<TWOTAP)
 		&((configFlags.onFreeFall)<<FREEFALL));
-	if(testTrigger || stateFlags.systemState == TRIGGERED){
+	if((testTrigger) || (stateFlags.systemState == TRIGGERED)){
 		stateFlags.systemState = TRIGGERED;
 		dataFlashMode(ACTIVE);
 		gyroMode(ACTIVE);
 		ADXL345Mode(ACTIVE);
 		testSampleSequence();
+		stateFlags.systemState = STANDBY;
 	}
 	
 	if((stateFlags.systemState == STANDBY) && (stateFlags.monitorMode)){
