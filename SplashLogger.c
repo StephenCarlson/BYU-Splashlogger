@@ -157,6 +157,8 @@ static struct{
 	uint8_t onTwoTap:1;
 	//uint8_t onActivity:1;
 	uint8_t onFreeFall:1;
+	uint8_t FF_Thresh;
+	uint8_t FF_Time;
 } configFlags;
 
 
@@ -251,6 +253,16 @@ ISR(USART_RX_vect){
 			printf("Trigger on Freefall: ");
 			if(configFlags.onFreeFall) printf("Enabled\n");
 			else printf("Disabled\n");
+			break;
+		case '7':
+			configFlags.FF_Thresh = (configFlags.FF_Thresh>15)? 0 : (configFlags.FF_Thresh+1) ;
+			printf("FF Threshold: %u mg\n",((uint16_t) configFlags.FF_Thresh * 625)/10);
+			ADXL345Init();
+			break;
+		case '8':
+			configFlags.FF_Time = (configFlags.FF_Time>20)? 0 : (configFlags.FF_Time+1) ;
+			printf("FF Min Time: %u ms\n",((uint8_t) configFlags.FF_Time * 5));
+			ADXL345Init();
 			break;
 		case '0':
 			eeprom_update_byte((uint8_t*)EEPROM_START,(*(uint8_t*) &configFlags)); //*((uint8_t*) &configFlags)
@@ -735,8 +747,8 @@ void ADXL345Init(void){
 		0x04,		// 	25	THRESH_INACT	.25g	62.5 mg/LSB unsigned	Stay below for TIME_INACT for inactivity
 		0x05,		// 	26	TIME_INACT	5sec	1 sec/LSB
 		0b11111111,	// 	27	ACT_INACT_CTL 		ACT[dc/AC][X|Y|Z] INACT[dc/AC][X|Y|Z]
-		0x08,		// 	28	THRESH_FF	500mg	62.5 mg/LSB unsigned sqrt(x^2+y^2+z^2)
-		0x14,		// 	29	TIME_FF		100ms	5 ms/LSB
+		configFlags.FF_Thresh,			// 	28	THRESH_FF	500mg	62.5 mg/LSB unsigned sqrt(x^2+y^2+z^2)
+		configFlags.FF_Time,			// 	29	TIME_FF		100ms	5 ms/LSB
 		0b00001111,	// 	2A	TAP_AXES				0[7:4], [Suppress] Enable[X|Y|Z]
 		0x00,		// 	2B	ACT_TAP_STATUS READ-ONLY [0] Activity[X|Y|Z] [Asleep] Tap[X|Y|Z]
 		ADXL_RATE,	// 	2C	BW_RATE				0[7:5], [Low Power] RateCode[3:0]
