@@ -1,1 +1,0 @@
-SplashLogger.o: SplashLogger.c
