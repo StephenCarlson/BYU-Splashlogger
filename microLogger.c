@@ -473,13 +473,13 @@ void loop(void){
 		// if(stateFlags.systemState != DOWN){
 			
 		// }
-		stateFlags.systemState = DOWN;
+		// stateFlags.systemState = DOWN;
 	} else{
 		if(stateFlags.systemState != STANDBY){
 			ADXL345Mode(ACTIVE);
 			dataFlashMode(ACTIVE);
 		}
-		stateFlags.systemState = STANDBY;
+		// stateFlags.systemState = STANDBY;
 	}
 	LED = LOW;
 
@@ -722,12 +722,17 @@ void bluetoothMode(uint8_t mode){
 	//cli();
 	stateFlags.uartSuppress = 1;
 	
+	
 	if(mode == SLEEP){
+	
 		//putUARTchar(
 		printf("$$$\n");
 		_delay_ms(50);
 		// printf("+\n");
 		// _delay_ms(5);
+		printf("SF,1\n");
+		
+		/*
 		printf("ST,255\n");
 		_delay_ms(50);
 		printf("SW,B200\n"); // 8C80 for 2sec
@@ -736,6 +741,7 @@ void bluetoothMode(uint8_t mode){
 		_delay_ms(50);
 		printf("---\n");
 		_delay_ms(5);
+		*/
 		
 		/*
 		"S|, " //Sleep Mode
@@ -749,6 +755,7 @@ void bluetoothMode(uint8_t mode){
 	
 	
 	}
+	
 	
 	stateFlags.uartSuppress = 0;
 	//sei();

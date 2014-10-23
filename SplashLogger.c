@@ -157,9 +157,10 @@ static struct{
 	uint8_t onTwoTap:1;
 	//uint8_t onActivity:1;
 	uint8_t onFreeFall:1;
-	uint8_t FF_Thresh;
-	uint8_t FF_Time;
 } configFlags;
+
+static uint8_t FF_Thresh;
+static uint8_t FF_Time;
 
 
 ISR(INT1_vect){
@@ -255,17 +256,22 @@ ISR(USART_RX_vect){
 			else printf("Disabled\n");
 			break;
 		case '7':
-			configFlags.FF_Thresh = (configFlags.FF_Thresh>15)? 0 : (configFlags.FF_Thresh+1) ;
-			printf("FF Threshold: %u mg\n",((uint16_t) configFlags.FF_Thresh * 625)/10);
+			FF_Thresh = (FF_Thresh>=16)? 0 : (FF_Thresh+1) ;
+			printf("FF Threshold: %u mg\n",((uint16_t) FF_Thresh * 625)/10);
 			ADXL345Init();
 			break;
 		case '8':
-			configFlags.FF_Time = (configFlags.FF_Time>20)? 0 : (configFlags.FF_Time+1) ;
-			printf("FF Min Time: %u ms\n",((uint8_t) configFlags.FF_Time * 5));
+			FF_Time = (FF_Time>=20)? 0 : (FF_Time+1) ;
+			printf("FF Min Time: %u ms\n",((uint8_t) FF_Time * 5));
+			// printf("%X\t%X\t%X\n",(uint8_t)(&configFlags +0),(uint8_t)((uint8_t*) (&configFlags +0)),(uint8_t)(*(uint8_t*) (&configFlags +0)));
+			// printf("%X\t%X\n",(uint8_t)((uint8_t*)(EEPROM_START)),(uint8_t)((uint8_t*)(EEPROM_START+1)));
 			ADXL345Init();
 			break;
 		case '0':
+			//eeprom_update_byte((uint8_t*)EEPROM_START,(*(uint8_t*) &configFlags)); //*((uint8_t*) &configFlags)
 			eeprom_update_byte((uint8_t*)EEPROM_START,(*(uint8_t*) &configFlags)); //*((uint8_t*) &configFlags)
+			eeprom_update_byte((uint8_t*)(EEPROM_START+1),FF_Thresh); //*((uint8_t*) &configFlags)
+			eeprom_update_byte((uint8_t*)(EEPROM_START+2),FF_Time); //*((uint8_t*) &configFlags)
 			printTriggerSources();
 			break;
 #endif
@@ -326,9 +332,16 @@ void setup(void){
 	DIDR0 	= (1<<ADC5D)|(1<<ADC4D)|(1<<ADC3D)|(1<<ADC2D)|(1<<ADC1D)|(1<<ADC0D);
 
 	// Tasks and Routines
-	printf("\n\nBYU Splash Logger dev July2012\n\n");
+	printf("\n\nBYU Splash Logger March 2014\n\n");
 	
 	flashLED(20,10,40);
+	
+	*((uint8_t*) &configFlags) = eeprom_read_byte((const uint8_t*) EEPROM_START);
+	FF_Thresh = eeprom_read_byte((const uint8_t*) EEPROM_START+1);
+	FF_Time = eeprom_read_byte((const uint8_t*) EEPROM_START+2);
+	
+	// *((uint8_t*) (&configFlags+8)) = eeprom_read_byte((const uint8_t*) (EEPROM_START+1));
+	// *((uint8_t*) (&configFlags+16)) = eeprom_read_byte((const uint8_t*) (EEPROM_START+2));
 	
 	printf("Device ID Check: ");
 	if(deviceIdCheck()){
@@ -364,8 +377,6 @@ void setup(void){
 	
 	// Critical for Flash to write samples correctly and as fast as possible
 	dataFlashCleanTestBlocks(testNumber);
-		
-	*((uint8_t*) &configFlags) = eeprom_read_byte((const uint8_t*) EEPROM_START);
 	
 	// Console Usage Hints
 	//printf("\nConsole Useage:\n+/-\tInc/Dec#\nD\tDump\nR\tReset Test#=1\nB\tBattery mV\nN\tCurrent Test#\nT\tForce Trigger\n?\tConsole Useage\n\n");
@@ -688,6 +699,8 @@ void printHelpInfo(void){
 		"N\tCurrent Test#\n"
 		"T\tForce Trigger\n"
 		"1 to 3\tToggle Trigger Sources\n"
+		"7\tFreeFall Threshold\n"
+		"8\tFreeFall Time\n"
 		"0\tWrite Toggles to EEPROM and Review\n"
 		"?\tConsole Useage\n\n");
 	printf("Impending Test# (Stored in Flash): %u\n\n", (dataFlashReadByte(0,0) +1));
@@ -702,7 +715,9 @@ void printTriggerSources(void){
 	printf("OneTap: %u\n",configFlags.onOneTap);
 	printf("TwoTap: %u\n",configFlags.onTwoTap);
 	//printf("Activity: %u\n",configFlags.onActivity);
-	printf("Freefall: %u\n\n",configFlags.onFreeFall);
+	printf("Freefall: %u\n",configFlags.onFreeFall);
+	printf("FF Threshold: %u mg\n",((uint16_t) FF_Thresh * 625)/10);
+	printf("FF Min Time: %u ms\n\n",((uint8_t) FF_Time * 5));
 #endif
 }
 
@@ -747,8 +762,8 @@ void ADXL345Init(void){
 		0x04,		// 	25	THRESH_INACT	.25g	62.5 mg/LSB unsigned	Stay below for TIME_INACT for inactivity
 		0x05,		// 	26	TIME_INACT	5sec	1 sec/LSB
 		0b11111111,	// 	27	ACT_INACT_CTL 		ACT[dc/AC][X|Y|Z] INACT[dc/AC][X|Y|Z]
-		configFlags.FF_Thresh,			// 	28	THRESH_FF	500mg	62.5 mg/LSB unsigned sqrt(x^2+y^2+z^2)
-		configFlags.FF_Time,			// 	29	TIME_FF		100ms	5 ms/LSB
+		12,			// 	28	THRESH_FF	500mg	62.5 mg/LSB unsigned sqrt(x^2+y^2+z^2)
+		20,			// 	29	TIME_FF		100ms	5 ms/LSB
 		0b00001111,	// 	2A	TAP_AXES				0[7:4], [Suppress] Enable[X|Y|Z]
 		0x00,		// 	2B	ACT_TAP_STATUS READ-ONLY [0] Activity[X|Y|Z] [Asleep] Tap[X|Y|Z]
 		ADXL_RATE,	// 	2C	BW_RATE				0[7:5], [Low Power] RateCode[3:0]
@@ -758,6 +773,9 @@ void ADXL345Init(void){
 		0x00,		// 	30	INT_SOURCE READ-ONLY
 		0b00001011	// 	31	DATA_FORMAT  FULL_RES bit set
 	};
+	
+	configArray[11] = FF_Thresh;
+	configArray[12] = FF_Time;
 	
 	CS_ADXL = LOW;
 		transferSPI((WRITE<<7) | (MULTI<<6) | 0x1D);
